@@ -1,0 +1,21 @@
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Dev server logs and internal data
+.freebuff/*.log
+.freebuff/*.err
+.freebuff/*.db
+.freebuff/*.db-shm
+.freebuff/*.db-wal
+.freebuff/project-id
+
+# Node
+node_modules/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
