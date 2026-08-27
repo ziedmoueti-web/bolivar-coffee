@@ -422,25 +422,26 @@ body.menu-open .nav__burger span:last-child { transform: translateY(-4.25px) rot
    ============================================================ */
 .hero {
   position: relative;
-  height: 250vh;
+  height: 400vh;
   overflow: hidden;
   background: var(--espresso);
 }
-.hero__sprite {
+.hero__video-wrap {
   position: sticky;
   top: 0;
   left: 0;
   width: 100%;
   height: 100vh;
   z-index: 0;
-  background-image: url('../img/sprite_sheet.png');
-  background-size: 1600% auto;
-  background-position: 0% 0%;
-  background-repeat: no-repeat;
-  will-change: background-position, transform;
-  transform: scale(1);
-  transition: transform 0.05s linear;
-  filter: brightness(0.95) contrast(1.05);
+  overflow: hidden;
+}
+.hero__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  will-change: transform, filter;
+  filter: brightness(0.88) contrast(1.08) saturate(1.05);
+  transform: scale(1.05);
 }
 .hero__overlay {
   position: sticky;
@@ -451,8 +452,8 @@ body.menu-open .nav__burger span:last-child { transform: translateY(-4.25px) rot
   z-index: 1;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 80% 70% at 50% 50%, transparent 30%, rgba(12, 7, 3, 0.55) 100%),
-    linear-gradient(to top, rgba(12, 7, 3, 0.7) 0%, rgba(12, 7, 3, 0.08) 40%, rgba(12, 7, 3, 0.35) 100%);
+    radial-gradient(ellipse 80% 70% at 50% 50%, transparent 20%, rgba(12, 7, 3, 0.6) 100%),
+    linear-gradient(to top, rgba(12, 7, 3, 0.75) 0%, rgba(12, 7, 3, 0.1) 35%, rgba(12, 7, 3, 0.4) 100%);
   transition: opacity 0.3s;
 }
 .hero__overlay::after {
@@ -461,7 +462,7 @@ body.menu-open .nav__burger span:last-child { transform: translateY(-4.25px) rot
   inset: 0;
   background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
   background-size: 256px 256px;
-  opacity: 0.4;
+  opacity: 0.35;
   mix-blend-mode: overlay;
   pointer-events: none;
 }
@@ -486,6 +487,7 @@ body.menu-open .nav__burger span:last-child { transform: translateY(-4.25px) rot
   margin-bottom: 26px;
   text-shadow: 0 1px 20px rgba(12, 7, 3, 0.5);
   will-change: transform, opacity;
+  overflow: hidden;
 }
 .hero__title {
   font-family: var(--font-display);
@@ -495,9 +497,21 @@ body.menu-open .nav__burger span:last-child { transform: translateY(-4.25px) rot
   letter-spacing: -0.01em;
   color: var(--cream);
   margin-bottom: 24px;
-  text-wrap: balance;
   text-shadow: 0 2px 40px rgba(12, 7, 3, 0.4);
   will-change: transform, opacity;
+}
+.hero__title-line {
+  display: block;
+  overflow: hidden;
+}
+.hero__title-word {
+  display: inline-block;
+  will-change: transform;
+}
+.hero__title-word--italic {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 500;
 }
 .hero__sub {
   font-size: clamp(1rem, 1.6vw, 1.2rem);
@@ -528,12 +542,15 @@ body.menu-open .nav__burger span:last-child { transform: translateY(-4.25px) rot
 }
 .hero__loc svg { width: 15px; height: 15px; }
 
+/* Hero entrance states (GSAP sets these via inline styles, CSS provides initial hidden state) */
+.js .hero-anim { opacity: 0; transform: translateY(40px); }
+
 .hero__scroll {
   position: fixed;
   bottom: 30px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 2;
+  z-index: 4;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -573,7 +590,7 @@ body.menu-open .nav__burger span:last-child { transform: translateY(-4.25px) rot
   left: 0;
   width: 100%;
   height: 3px;
-  z-index: 3;
+  z-index: 5;
   background: rgba(243, 236, 223, 0.08);
   overflow: hidden;
 }
@@ -585,16 +602,9 @@ body.menu-open .nav__burger span:last-child { transform: translateY(-4.25px) rot
   transition: width 0.05s linear;
 }
 
-/* Hero entrance sequence */
+/* Hero entrance sequence — handled by GSAP, these are fallback states */
 .js .hero-item { opacity: 0; transform: translateY(26px); }
-.js body.is-loaded .hero-item {
-  animation: heroIn 1.2s var(--ease) forwards;
-  animation-delay: var(--d, 0s);
-}
-@keyframes heroIn {
-  from { opacity: 0; transform: translateY(26px); filter: blur(4px); }
-  to { opacity: 1; transform: none; filter: blur(0); }
-}
+body.is-loaded .hero-item { opacity: 1; transform: none; }
 
 /* ============================================================
    MARQUEE
@@ -1474,6 +1484,18 @@ body.menu-open .nav__burger span:last-child { transform: translateY(-4.25px) rot
 .js .picks .reveal--mask .frame::after { background: var(--espresso); }
 
 /* ============================================================
+   SECTION REVEAL SYSTEM
+   ============================================================ */
+.js .section-reveal {
+  opacity: 0;
+  transform: translateY(50px);
+}
+.js .section-reveal.is-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+/* ============================================================
    RESPONSIVE
    ============================================================ */
 @media (min-width: 1024px) {
@@ -1592,9 +1614,12 @@ body.menu-open .nav__burger span:last-child { transform: translateY(-4.25px) rot
     transition-duration: 0.01ms !important;
   }
   .preloader { display: none; }
-  .hero__sprite { animation: none; }
-  .js .reveal, .js .reveal--mask, .js .hero-item { opacity: 1; transform: none; }
+  .hero__video-wrap { position: relative; height: 100vh; }
+  .hero__video { transform: none; }
+  .hero { height: auto; overflow: visible; }
+  .js .reveal, .js .reveal--mask, .js .hero-item, .js .hero-anim { opacity: 1; transform: none; }
   .js .reveal--mask .frame::after { display: none; }
-  .js body.is-loaded .hero-item { animation: none; opacity: 1; transform: none; }
+  body.is-loaded .hero-item { opacity: 1; transform: none; }
   .marquee__track { animation: none; }
+  .section-reveal { opacity: 1; transform: none; }
 }

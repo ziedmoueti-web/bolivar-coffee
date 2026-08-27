@@ -27,15 +27,34 @@ http.createServer((req, res) => {
     res.writeHead(403);
     return res.end();
   }
-  fs.readFile(fp, (e, d) => {
-    if (e) {
+  fs.stat(fp, (err, stat) => {
+    if (err) {
       res.writeHead(404);
       return res.end("not found");
     }
-    res.writeHead(200, {
-      "Content-Type": types[path.extname(fp)] || "application/octet-stream",
-      "Cache-Control": "no-store",
-    });
-    res.end(d);
+    const ct = types[path.extname(fp)] || "application/octet-stream";
+    const range = req.headers.range;
+    if (range) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+      const chunkSize = end - start + 1;
+      res.writeHead(206, {
+        "Content-Range": `bytes ${start}-${end}/${stat.size}`,
+        "Accept-Ranges": "bytes",
+        "Content-Length": chunkSize,
+        "Content-Type": ct,
+        "Cache-Control": "no-store",
+      });
+      fs.createReadStream(fp, { start, end }).pipe(res);
+    } else {
+      res.writeHead(200, {
+        "Content-Type": ct,
+        "Content-Length": stat.size,
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "no-store",
+      });
+      fs.createReadStream(fp).pipe(res);
+    }
   });
 }).listen(8088, "127.0.0.1", () => console.log("up"));

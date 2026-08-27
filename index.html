@@ -67,6 +67,11 @@
 
   <link rel="stylesheet" href="css/style.css">
   <script>document.documentElement.classList.add('js');</script>
+
+  <!-- Premium animation libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/gsap.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/ScrollTrigger.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/lenis@1.1.18/dist/lenis.min.js" defer></script>
 </head>
 
 <body id="top">
@@ -135,15 +140,19 @@
 
     <!-- ============ HERO ============ -->
     <section class="hero" id="home">
-      <div class="hero__sprite" aria-hidden="true" id="heroSprite"></div>
+      <div class="hero__video-wrap" aria-hidden="true">
+        <video class="hero__video" id="heroVideo" preload="auto" muted playsinline>
+          <source src="img/espresso.mp4" type="video/mp4">
+        </video>
+      </div>
       <div class="hero__overlay"></div>
 
       <div class="hero__content">
-        <p class="hero__eyebrow hero-item" style="--d:.05s">BOLIVAR COFFEE &amp; LOUNGE</p>
-        <h1 class="hero__title hero-item" style="--d:.18s">More Than <em>Coffee.</em></h1>
-        <p class="hero__sub hero-item" style="--d:.32s">A place to slow down, gather, taste and enjoy.</p>
+        <p class="hero__eyebrow hero-anim" data-anim="hero">BOLIVAR COFFEE &amp; LOUNGE</p>
+        <h1 class="hero__title hero-anim" data-anim="hero"><span class="hero__title-line"><span class="hero__title-word">More Than</span></span><span class="hero__title-line"><span class="hero__title-word hero__title-word--italic">Coffee.</span></span></h1>
+        <p class="hero__sub hero-anim" data-anim="hero">A place to slow down, gather, taste and enjoy.</p>
 
-        <div class="hero__cta hero-item" style="--d:.46s">
+        <div class="hero__cta hero-anim" data-anim="hero">
           <a class="btn btn--light" href="#menu" data-scroll data-magnetic data-cursor="OPEN">
             EXPLORE THE MENU <span class="btn__arrow" aria-hidden="true">→</span>
           </a>
@@ -152,7 +161,7 @@
           </a>
         </div>
 
-        <p class="hero__loc hero-item" style="--d:.60s">
+        <p class="hero__loc hero-anim" data-anim="hero">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 21s-7-5.1-7-11a7 7 0 1 1 14 0c0 5.9-7 11-7 11Z"/><circle cx="12" cy="10" r="2.6"/></svg>
           MEGRINE · TUNISIA
         </p>

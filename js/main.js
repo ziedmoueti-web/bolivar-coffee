@@ -1,6 +1,8 @@
 /* ============================================================
-   BOLIVAR COFFEE & LOUNGE — interactions
-   Vanilla JS, no dependencies. GPU-friendly, reduced-motion aware.
+   BOLIVAR COFFEE & LOUNGE — premium motion system
+   GSAP + ScrollTrigger + Lenis smooth scroll.
+   Preserves: preloader, cursor, magnetic buttons, nav, mobile menu,
+   menu tabs, reviews counter, gallery lightbox, dish expand.
    ============================================================ */
 (function () {
   "use strict";
@@ -9,13 +11,16 @@
   var body = doc.body;
   var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var finePointer = window.matchMedia("(pointer: fine)").matches;
+  var isMobile = window.innerWidth < 768;
 
   var clamp = function (v, min, max) { return Math.max(min, Math.min(max, v)); };
   var lerp = function (a, b, t) { return a + (b - a) * t; };
   var $ = function (s, c) { return (c || doc).querySelector(s); };
   var $$ = function (s, c) { return Array.prototype.slice.call((c || doc).querySelectorAll(s)); };
 
-  /* ---------- Preloader ---------- */
+  /* ============================================================
+     PRELOADER
+     ============================================================ */
   var preloaderDone = false;
   function finishPreloader() {
     if (preloaderDone) return;
@@ -30,14 +35,14 @@
     finishPreloader();
   } else {
     window.addEventListener("load", function () {
-      // Small fixed delay so the word + line read before the reveal
       setTimeout(finishPreloader, 450);
     });
-    // Safety net — never let the preloader linger
     setTimeout(finishPreloader, 2600);
   }
 
-  /* ---------- Custom cursor (desktop, fine pointer only) ---------- */
+  /* ============================================================
+     CUSTOM CURSOR (desktop, fine pointer only)
+     ============================================================ */
   var cursor = null, dot = null, ring = null, label = null;
   var cx = 0, cy = 0, rx = 0, ry = 0;
   var cursorActive = false;
@@ -55,16 +60,10 @@
         cursorActive = true;
         rx = cx; ry = cy;
       }
-      positionCursor(cx, cy, true);
+      dot.style.transform = "translate(" + cx + "px," + cy + "px)";
+      ring.style.transform = "translate(" + cx + "px," + cy + "px)";
+      if (label) label.style.transform = "translate(" + cx + "px," + cy + "px) translate(-50%,-50%)";
     });
-
-    function positionCursor(x, y, snap) {
-      dot.style.transform = "translate(" + x + "px," + y + "px)";
-      if (snap) {
-        ring.style.transform = "translate(" + x + "px," + y + "px)";
-        if (label) label.style.transform = "translate(" + x + "px," + y + "px) translate(-50%,-50%)";
-      }
-    }
 
     function cursorLoop() {
       if (!cursorActive) return;
@@ -82,7 +81,6 @@
     });
     doc.addEventListener("mouseenter", function () { cursor.classList.add("is-active"); });
 
-    // Hover states via delegation
     doc.addEventListener("mouseover", function (e) {
       var t = e.target.closest("[data-cursor]");
       if (t) {
@@ -101,7 +99,9 @@
     if (c) c.parentNode.removeChild(c);
   }
 
-  /* ---------- Magnetic buttons (desktop, subtle) ---------- */
+  /* ============================================================
+     MAGNETIC BUTTONS (desktop, subtle)
+     ============================================================ */
   if (finePointer && !reduceMotion) {
     $$("[data-magnetic]").forEach(function (el) {
       el.addEventListener("mousemove", function (e) {
@@ -116,7 +116,9 @@
     });
   }
 
-  /* ---------- Navbar scroll state ---------- */
+  /* ============================================================
+     NAVBAR SCROLL STATE
+     ============================================================ */
   var nav = $("#nav");
   var fab = $("#fab");
   function onScrollNav() {
@@ -127,7 +129,9 @@
   window.addEventListener("scroll", onScrollNav, { passive: true });
   onScrollNav();
 
-  /* ---------- Mobile menu ---------- */
+  /* ============================================================
+     MOBILE MENU
+     ============================================================ */
   var burger = $("#navBurger");
   var mobileMenu = $("#mobileMenu");
   function closeMenu() {
@@ -148,7 +152,9 @@
     });
   }
 
-  /* ---------- Smooth scroll for anchors ---------- */
+  /* ============================================================
+     SMOOTH SCROLL FOR ANCHORS (fallback — Lenis handles smooth)
+     ============================================================ */
   $$("[data-scroll]").forEach(function (link) {
     link.addEventListener("click", function (e) {
       var target = doc.querySelector(link.getAttribute("href"));
@@ -157,56 +163,18 @@
       closeMenu();
       var navH = nav ? nav.offsetHeight : 0;
       var top = target.getBoundingClientRect().top + window.scrollY - navH + 4;
-      if (reduceMotion) {
+      if (reduceMotion || !window.__lenis) {
         window.scrollTo(0, top);
       } else {
-        window.scrollTo({ top: top, behavior: "smooth" });
+        window.__lenis.scrollTo(target, { offset: -navH + 4 });
       }
       history.replaceState(null, "", link.getAttribute("href"));
     });
   });
 
-  /* ---------- Scroll reveal ---------- */
-  var revealEls = $$(".reveal");
-  if ("IntersectionObserver" in window && !reduceMotion) {
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (en) {
-        if (en.isIntersecting) {
-          en.target.classList.add("in-view");
-          io.unobserve(en.target);
-        }
-      });
-    }, { threshold: 0.14, rootMargin: "0px 0px -6% 0px" });
-    revealEls.forEach(function (el) { io.observe(el); });
-  } else {
-    revealEls.forEach(function (el) { el.classList.add("in-view"); });
-  }
-
-  /* ---------- Parallax (transform-only, rAF-throttled) ---------- */
-  var parallaxEls = $$("[data-parallax]");
-  var ticking = false;
-  function applyParallax() {
-    ticking = false;
-    var vh = window.innerHeight;
-    parallaxEls.forEach(function (el) {
-      var r = el.getBoundingClientRect();
-      if (r.bottom < -200 || r.top > vh + 200) return;
-      var speed = parseFloat(el.getAttribute("data-parallax")) || 0.08;
-      var offset = (r.top + r.height / 2 - vh / 2) * speed;
-      el.style.transform = "translate3d(0," + offset.toFixed(1) + "px,0)";
-    });
-  }
-  if (parallaxEls.length && !reduceMotion) {
-    window.addEventListener("scroll", function () {
-      if (!ticking) {
-        ticking = true;
-        requestAnimationFrame(applyParallax);
-      }
-    }, { passive: true });
-    applyParallax();
-  }
-
-  /* ---------- Menu tabs ---------- */
+  /* ============================================================
+     MENU TABS
+     ============================================================ */
   var tabs = $$(".menu__tab");
   var grid = $("#menuGrid");
   var activeCat = "coffee";
@@ -224,7 +192,6 @@
       t.setAttribute("aria-selected", String(on));
     });
 
-    // Fade out current set
     var visible = $$(".dish.is-show", grid);
     visible.forEach(function (d) {
       d.style.transition = "opacity 0.24s ease, transform 0.24s ease";
@@ -233,7 +200,6 @@
     });
 
     setTimeout(function () {
-      // Hide all, reveal the target set with a stagger
       $$(".dish", grid).forEach(function (d) {
         d.style.transition = "";
         d.style.transitionDelay = "0s";
@@ -245,8 +211,6 @@
           dishesFor(cat).forEach(function (d, i) {
             d.style.transitionDelay = (i * 70) + "ms";
             d.classList.add("is-show");
-            // Clear the stagger delay once the entrance is done so hover
-            // transitions on the card are never delayed.
             setTimeout(function () { d.style.transitionDelay = "0s"; }, 700 + i * 70);
           });
         });
@@ -257,7 +221,6 @@
   tabs.forEach(function (t) {
     t.addEventListener("click", function () { showCategory(t.getAttribute("data-cat")); });
   });
-  // Initial state: show only the coffee set
   $$(".dish", grid).forEach(function (d) {
     if (d.getAttribute("data-category") !== activeCat) d.style.display = "none";
   });
@@ -270,7 +233,6 @@
     });
   });
 
-  // Mobile: tap a dish to expand (desktop hover equivalent)
   if (window.matchMedia("(hover: none)").matches) {
     grid.addEventListener("click", function (e) {
       var dish = e.target.closest(".dish");
@@ -281,7 +243,9 @@
     });
   }
 
-  /* ---------- Review score counters + stars ---------- */
+  /* ============================================================
+     REVIEW SCORE COUNTERS + STARS
+     ============================================================ */
   var score = $(".reviews__score");
   var counted = false;
   function animateCount(el) {
@@ -301,7 +265,6 @@
   function animateStars() {
     var i = 0;
     $$(".reviews__stars .star").forEach(function (s) {
-      // Keep the 5th star partial (70% fill) — it represents the 4.7 rating
       if (s.classList.contains("is-partial")) return;
       setTimeout(function () { s.classList.add("is-full"); }, 200 + i * 160);
       i++;
@@ -326,7 +289,9 @@
     $$("[data-count-to]", score).forEach(function (el) { el.textContent = el.getAttribute("data-count-to"); });
   }
 
-  /* ---------- Gallery lightbox ---------- */
+  /* ============================================================
+     GALLERY LIGHTBOX
+     ============================================================ */
   var items = $$(".g-item");
   var lightbox = $("#lightbox");
   var lbImg = $("#lbImg");
@@ -346,7 +311,7 @@
     lbShow(i);
     lightbox.classList.add("is-open");
     lightbox.setAttribute("aria-hidden", "false");
-    body.classList.add("menu-open"); // lock scroll (reuses the same class)
+    body.classList.add("menu-open");
   }
   function lbClose() {
     if (!lightbox) return;
@@ -372,7 +337,6 @@
       if (e.key === "ArrowLeft") lbShow(lbIndex - 1);
       if (e.key === "ArrowRight") lbShow(lbIndex + 1);
     });
-    // Basic swipe support
     var touchX = null;
     lightbox.addEventListener("touchstart", function (e) {
       touchX = e.changedTouches[0].clientX;
@@ -385,162 +349,497 @@
     }, { passive: true });
   }
 
-  /* ---------- Footer year is static (© 2026) — nothing to do ---------- */
+  /* ============================================================
+     GSAP + SCROLLTRIGGER + LENIS — Premium Motion System
+     ============================================================ */
+  function initPremiumMotion() {
+    if (typeof gsap === "undefined" || typeof ScrollTrigger === "undefined") {
+      // Fallback: just show everything
+      $$(".hero-anim, .reveal, .reveal--mask, .hero-item").forEach(function (el) {
+        el.style.opacity = "1";
+        el.style.transform = "none";
+      });
+      $$(".reveal--mask .frame").forEach(function (f) {
+        var after = f.querySelector("::after");
+      });
+      return;
+    }
 
-  /* ---------- Sprite-sheet scroll animation (cinematic) ---------- */
-  (function () {
-    var sprite = $("#heroSprite");
+    gsap.registerPlugin(ScrollTrigger);
+
+    /* --- Lenis Smooth Scroll --- */
+    if (!reduceMotion && typeof Lenis !== "undefined") {
+      var lenis = new Lenis({
+        duration: 1.2,
+        easing: function (t) { return Math.min(1, 1.001 - Math.pow(2, -10 * t)); },
+        orientation: "vertical",
+        smoothWheel: true,
+        wheelMultiplier: 1,
+        touchMultiplier: 2,
+      });
+      window.__lenis = lenis;
+
+      lenis.on("scroll", ScrollTrigger.update);
+      gsap.ticker.add(function (time) {
+        lenis.raf(time * 1000);
+      });
+      gsap.ticker.lagSmoothing(0);
+
+      // Sync Lenis with anchor clicks
+      $$("[data-scroll]").forEach(function (link) {
+        link.addEventListener("click", function (e) {
+          var target = doc.querySelector(link.getAttribute("href"));
+          if (!target) return;
+          e.preventDefault();
+          closeMenu();
+          lenis.scrollTo(target, { offset: -(nav ? nav.offsetHeight : 0) + 4 });
+          history.replaceState(null, "", link.getAttribute("href"));
+        });
+      });
+    }
+
+    /* --- Hero Video Scroll Control --- */
+    var heroVideo = $("#heroVideo");
     var hero = $("#home");
-    var overlay = $(".hero__overlay");
+    var heroOverlay = $(".hero__overlay");
     var scrollCue = $(".hero__scroll");
-    var progressBar = $(".hero__progress-bar");
-    if (!sprite || !hero) return;
+    var progressBar = $(".hero__progress-bar");      if (heroVideo && hero) {
+      // Start video muted so currentTime can be set (autoplay policy allows muted)
+      heroVideo.play().then(function () {
+        heroVideo.pause();
+      }).catch(function () {});
 
-    /* Sprite sheet layout: 16 cols × 12 rows, 192 frames total */
-    var COLS = 16;
-    var ROWS = 12;
-    var TOTAL = COLS * ROWS;
+      // Scroll-pinned hero sequence
+      if (!reduceMotion) {
+        var heroTl = gsap.timeline({
+          scrollTrigger: {
+            trigger: hero,
+            start: "top top",
+            end: "bottom bottom",
+            scrub: 1.5,
+            pin: false,
+            onUpdate: function (self) {
+              var progress = self.progress;
+              // Map scroll progress to video time
+              var duration = heroVideo.duration;
+              if (duration && isFinite(duration)) {
+                heroVideo.currentTime = progress * duration;
+              }
+              // Ken Burns zoom on video
+              var scale = 1.05 + progress * 0.1;
+              heroVideo.style.transform = "scale(" + scale.toFixed(4) + ")";
+              // Progress bar
+              if (progressBar) progressBar.style.width = (progress * 100).toFixed(1) + "%";
+              // Scroll cue
+              if (scrollCue) {
+                scrollCue.classList.toggle("is-hidden", progress > 0.05);
+              }
+              // Overlay intensity
+              if (heroOverlay) {
+                var overlayOpacity = 1 - progress * 0.3;
+                heroOverlay.style.opacity = clamp(overlayOpacity, 0.4, 1).toFixed(3);
+              }
+            }
+          }
+        });
+      } else {
+        // Reduced motion: just play the video normally
+        heroVideo.play().catch(function () {});
+      }
 
-    /* Smoothed values */
-    var currentFrame = 0;
-    var targetFrame = 0;
-    var currentProgress = 0;
-    var targetProgress = 0;
-    var scrollVelocity = 0;
-    var lastTime = performance.now();
-    var lastScrollY = window.scrollY;
+      // Hero content parallax on scroll (separate from video)
+      if (!reduceMotion) {
+        var heroContent = $(".hero__content");
+        if (heroContent) {
+          gsap.to(heroContent, {
+            y: -120,
+            opacity: 0,
+            ease: "none",
+            scrollTrigger: {
+              trigger: hero,
+              start: "top top",
+              end: "60% top",
+              scrub: 1,
+            }
+          });
+        }
+      }
+    }
 
-    /* Guard: don't touch text opacity/transform until entrance animation completes
-       to avoid the JS parallax overriding the heroIn keyframe animation (flash bug). */
-    var heroReady = false;
-    if ($$('.hero-item').length) {
-      var maxDelay = 600; // largest --d value in ms
-      var animDuration = 1200; // heroIn duration
-      setTimeout(function () { heroReady = true; }, maxDelay + animDuration + 100);
+    /* --- Hero Entrance Animation --- */
+    if (!reduceMotion) {
+      var heroEntrance = gsap.timeline({
+        delay: 0.6,
+        paused: true,
+        onStart: function () {
+          body.classList.add("is-loaded");
+        }
+      });
+
+      // Eyebrow slide up from below
+      heroEntrance.fromTo(".hero__eyebrow",
+        { y: 50, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.9, ease: "power3.out" },
+        0
+      );
+
+      // Title lines reveal with clip-path
+      heroEntrance.fromTo(".hero__title-line",
+        { clipPath: "inset(100% 0 0 0)" },
+        { clipPath: "inset(0% 0 0 0)", duration: 1.1, ease: "power3.out", stagger: 0.12 },
+        0.15
+      );
+
+      // Title words slide up inside their lines
+      heroEntrance.fromTo(".hero__title-word",
+        { y: 80 },
+        { y: 0, duration: 1.2, ease: "power3.out", stagger: 0.1 },
+        0.2
+      );
+
+      // Subtitle fade up
+      heroEntrance.fromTo(".hero__sub",
+        { y: 30, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.8, ease: "power2.out" },
+        0.5
+      );
+
+      // CTA buttons stagger in
+      heroEntrance.fromTo(".hero__cta .btn",
+        { y: 20, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.7, ease: "power2.out", stagger: 0.1 },
+        0.65
+      );
+
+      // Location line
+      heroEntrance.fromTo(".hero__loc",
+        { y: 15, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" },
+        0.85
+      );
+
+      // Scroll cue fade in
+      heroEntrance.fromTo(".hero__scroll",
+        { opacity: 0 },
+        { opacity: 1, duration: 0.8, ease: "power2.out" },
+        1.0
+      );
+
+      // Video fade in
+      if (heroVideo) {
+        heroEntrance.fromTo(heroVideo,
+          { scale: 1.15, opacity: 0 },
+          { scale: 1.05, opacity: 1, duration: 1.8, ease: "power2.out" },
+          0
+        );
+      }
+
+      // Play the entrance after preloader finishes
+      var checkReady = setInterval(function () {
+        if (preloaderDone) {
+          clearInterval(checkReady);
+          heroEntrance.play();
+        }
+      }, 50);
+      // Safety: play after max wait
+      setTimeout(function () {
+        clearInterval(checkReady);
+        if (heroEntrance.progress() === 0) heroEntrance.play();
+      }, 3500);
     } else {
-      heroReady = true;
+      // Reduced motion: just show everything
+      body.classList.add("is-loaded");
+      $$(".hero-anim").forEach(function (el) {
+        el.style.opacity = "1";
+        el.style.transform = "none";
+      });
+      if (heroVideo) heroVideo.style.opacity = "1";
     }
 
-    /* Hero scroll range */
-    function heroScrollRange() {
-      return hero.offsetHeight - window.innerHeight;
-    }
+    /* --- Section Reveals --- */
+    if (!reduceMotion) {
+      // About section: text stagger + image mask
+      ScrollTrigger.create({
+        trigger: "#about",
+        start: "top 80%",
+        once: true,
+        onEnter: function () {
+          var aboutTl = gsap.timeline();
+          aboutTl.fromTo("#about .eyebrow",
+            { y: 30, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.7, ease: "power2.out" }
+          );
+          aboutTl.fromTo("#about .h-display",
+            { y: 40, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.9, ease: "power3.out" },
+            "-=0.4"
+          );
+          aboutTl.fromTo("#about .intro__para",
+            { y: 25, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.7, ease: "power2.out" },
+            "-=0.5"
+          );
+          aboutTl.fromTo("#about .stat",
+            { y: 20, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.5, ease: "power2.out", stagger: 0.1 },
+            "-=0.3"
+          );
+          // Image reveal
+          var introFrame = $("#about .frame");
+          if (introFrame) {
+            gsap.fromTo(introFrame,
+              { clipPath: "inset(0 100% 0 0)" },
+              { clipPath: "inset(0 0% 0 0)", duration: 1.2, ease: "power3.inOut", delay: 0.3 }
+            );
+          }
+        }
+      });
 
-    function getScrollProgress() {
-      var rect = hero.getBoundingClientRect();
-      var scrolled = -rect.top;
-      var range = heroScrollRange();
-      return clamp(scrolled / range, 0, 1);
-    }
+      // Atmosphere section
+      ScrollTrigger.create({
+        trigger: "#atmosphere",
+        start: "top 75%",
+        once: true,
+        onEnter: function () {
+          var atmTl = gsap.timeline();
+          atmTl.fromTo("#atmosphere .eyebrow",
+            { y: 30, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" }
+          );
+          atmTl.fromTo("#atmosphere .h-display",
+            { y: 40, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.8, ease: "power3.out" },
+            "-=0.3"
+          );
+          // Stagger the atmosphere images
+          $$("#atmosphere .atm").forEach(function (atm, i) {
+            gsap.fromTo(atm,
+              { y: 60, opacity: 0, scale: 0.95 },
+              { y: 0, opacity: 1, scale: 1, duration: 0.9, ease: "power2.out", delay: 0.2 + i * 0.12 }
+            );
+          });
+          // Note
+          gsap.fromTo("#atmosphere .atmosphere__note",
+            { y: 30, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.8, ease: "power2.out", delay: 0.8 }
+          );
+        }
+      });
 
-    /* Overlay fades */
-    function updateOverlay(p) {
-      if (!overlay) return;
-      var rect = hero.getBoundingClientRect();
-      var pastHero = rect.bottom <= window.innerHeight * 0.3;
-      overlay.style.opacity = pastHero ? "0" : "1";
-    }
+      // Menu section
+      ScrollTrigger.create({
+        trigger: "#menu",
+        start: "top 80%",
+        once: true,
+        onEnter: function () {
+          gsap.fromTo("#menu .eyebrow",
+            { y: 30, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" }
+          );
+          gsap.fromTo("#menu .h-display",
+            { y: 40, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.8, ease: "power3.out", delay: 0.1 }
+          );
+          gsap.fromTo("#menu .menu__note",
+            { y: 20, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.6, ease: "power2.out", delay: 0.2 }
+          );
+          gsap.fromTo("#menu .menu__tabs",
+            { y: 20, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.6, ease: "power2.out", delay: 0.3 }
+          );
+        }
+      });
 
-    /* Scroll cue */
-    function updateScrollCue() {
-      if (!scrollCue) return;
-      var heroBottom = hero.getBoundingClientRect().bottom;
-      var pastHero = heroBottom <= window.innerHeight;
-      scrollCue.classList.toggle("is-hidden", pastHero || window.scrollY > 80);
-    }
+      // Picks section
+      ScrollTrigger.create({
+        trigger: "#picks",
+        start: "top 75%",
+        once: true,
+        onEnter: function () {
+          gsap.fromTo("#picks .eyebrow",
+            { y: 30, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" }
+          );
+          gsap.fromTo("#picks .h-display",
+            { y: 40, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.8, ease: "power3.out", delay: 0.1 }
+          );
+          $$("#picks .pick").forEach(function (pick, i) {
+            gsap.fromTo(pick,
+              { y: 50, opacity: 0 },
+              { y: 0, opacity: 1, duration: 0.8, ease: "power2.out", delay: 0.2 + i * 0.15 }
+            );
+          });
+        }
+      });
 
-    /* Apply frame to sprite — pixel-precise background-position */
-    function applyFrame(frameIdx) {
-      var col = frameIdx % COLS;
-      var row = Math.floor(frameIdx / COLS);
-      var xPct = (col / (COLS - 1)) * 100;
-      var yPct = (row / (ROWS - 1)) * 100;
-      sprite.style.backgroundPosition = xPct + "% " + yPct + "%";
-    }
+      // Reviews section
+      ScrollTrigger.create({
+        trigger: "#reviews",
+        start: "top 80%",
+        once: true,
+        onEnter: function () {
+          gsap.fromTo("#reviews .eyebrow",
+            { y: 30, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" }
+          );
+          gsap.fromTo("#reviews .h-display",
+            { y: 40, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.8, ease: "power3.out", delay: 0.1 }
+          );
+          gsap.fromTo("#reviews .reviews__score",
+            { y: 30, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.7, ease: "power2.out", delay: 0.2 }
+          );
+          gsap.fromTo(".review",
+            { y: 40, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.7, ease: "power2.out", stagger: 0.12, delay: 0.3 }
+          );
+        }
+      });
 
-    /* Cinematic Ken Burns: subtle zoom tied to scroll */
-    function applyKenBurns(progress) {
-      var scale = 1 + progress * 0.08;
-      sprite.style.transform = "scale(" + scale.toFixed(4) + ")";
-    }
+      // Gallery section
+      ScrollTrigger.create({
+        trigger: "#gallery",
+        start: "top 80%",
+        once: true,
+        onEnter: function () {
+          gsap.fromTo("#gallery .eyebrow",
+            { y: 30, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" }
+          );
+          gsap.fromTo("#gallery .h-display",
+            { y: 40, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.8, ease: "power3.out", delay: 0.1 }
+          );
+          $$(".g-item").forEach(function (item, i) {
+            gsap.fromTo(item,
+              { y: 40, opacity: 0, scale: 0.96 },
+              { y: 0, opacity: 1, scale: 1, duration: 0.7, ease: "power2.out", delay: 0.15 + i * 0.06 }
+            );
+          });
+        }
+      });
 
-    /* Scroll-linked parallax on hero text elements */
-    var heroEyebrow = $(".hero__eyebrow");
-    var heroTitle = $(".hero__title");
-    var heroSub = $(".hero__sub");
-    var heroCta = $(".hero__cta");
-    var heroLoc = $(".hero__loc");
-    var textEls = [heroEyebrow, heroTitle, heroSub, heroCta, heroLoc].filter(Boolean);
-    var textSpeeds = [0.35, 0.2, 0.12, 0.06, 0.04];
+      // Instagram section
+      ScrollTrigger.create({
+        trigger: "#instagram",
+        start: "top 80%",
+        once: true,
+        onEnter: function () {
+          gsap.fromTo("#instagram .eyebrow",
+            { y: 30, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" }
+          );
+          gsap.fromTo("#instagram .h-display",
+            { y: 40, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.8, ease: "power3.out", delay: 0.1 }
+          );
+          $$(".ig-tile").forEach(function (tile, i) {
+            gsap.fromTo(tile,
+              { y: 30, opacity: 0 },
+              { y: 0, opacity: 1, duration: 0.6, ease: "power2.out", delay: 0.2 + i * 0.06 }
+            );
+          });
+        }
+      });
 
-    function applyTextParallax(progress) {
-      if (!heroReady) return;
-      for (var i = 0; i < textEls.length; i++) {
-        var el = textEls[i];
-        var speed = textSpeeds[i];
-        var yOffset = progress * speed * -200;
-        var opacity = 1 - progress * 1.2;
-        opacity = clamp(opacity, 0, 1);
-        el.style.transform = "translate3d(0," + yOffset.toFixed(1) + "px,0)";
-        el.style.opacity = opacity.toFixed(3);
-      }
-    }
+      // Location section (calmer)
+      ScrollTrigger.create({
+        trigger: "#location",
+        start: "top 80%",
+        once: true,
+        onEnter: function () {
+          gsap.fromTo("#location .eyebrow",
+            { y: 25, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.7, ease: "power2.out" }
+          );
+          gsap.fromTo("#location .h-display",
+            { y: 35, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.9, ease: "power3.out", delay: 0.1 }
+          );
+          $$(".loc-block").forEach(function (block, i) {
+            gsap.fromTo(block,
+              { y: 25, opacity: 0 },
+              { y: 0, opacity: 1, duration: 0.6, ease: "power2.out", delay: 0.2 + i * 0.08 }
+            );
+          });
+        }
+      });
 
-    /* Smooth scroll velocity for motion blur / responsiveness */
-    function getScrollVelocity() {
-      var now = performance.now();
-      var dt = (now - lastTime) / 1000;
-      if (dt > 0) {
-        scrollVelocity = lerp(scrollVelocity, Math.abs(window.scrollY - lastScrollY) / dt, 0.3);
-      }
-      lastTime = now;
-      lastScrollY = window.scrollY;
-      return scrollVelocity;
-    }
+      // Parallax on images throughout the page
+      $$("[data-parallax]").forEach(function (el) {
+        var speed = parseFloat(el.getAttribute("data-parallax")) || 0.08;
+        gsap.to(el, {
+          y: speed * -150,
+          ease: "none",
+          scrollTrigger: {
+            trigger: el,
+            start: "top bottom",
+            end: "bottom top",
+            scrub: 1.5,
+          }
+        });
+      });
 
-    /* Main animation loop */
-    function animate() {
-      var now = performance.now();
-      targetProgress = getScrollProgress();
-      targetFrame = Math.round(targetProgress * (TOTAL - 1));
+      // Frame image reveal masks
+      $$(".reveal--mask .frame").forEach(function (frame) {
+        ScrollTrigger.create({
+          trigger: frame,
+          start: "top 85%",
+          once: true,
+          onEnter: function () {
+            gsap.fromTo(frame,
+              { clipPath: "inset(0 100% 0 0)" },
+              { clipPath: "inset(0 0% 0 0)", duration: 1.1, ease: "power3.inOut" }
+            );
+          }
+        });
+      });
 
-      /* Smooth interpolation — different speeds for frame vs progress */
-      var frameLerp = 0.12;
-      var progressLerp = 0.1;
-
-      /* Faster response when scrolling fast */
-      var vel = getScrollVelocity();
-      if (vel > 2000) {
-        frameLerp = 0.35;
-        progressLerp = 0.28;
-      } else if (vel > 800) {
-        frameLerp = 0.22;
-        progressLerp = 0.18;
-      }
-
-      currentFrame = lerp(currentFrame, targetFrame, frameLerp);
-      currentProgress = lerp(currentProgress, targetProgress, progressLerp);
-
-      /* Snap when close */
-      if (Math.abs(currentFrame - targetFrame) < 0.1) currentFrame = targetFrame;
-      if (Math.abs(currentProgress - targetProgress) < 0.001) currentProgress = targetProgress;
-
-      applyFrame(Math.round(currentFrame));
-      applyKenBurns(currentProgress);
-      applyTextParallax(currentProgress);
-      updateOverlay(currentProgress);
-      updateScrollCue();
-      if (progressBar) progressBar.style.width = (currentProgress * 100).toFixed(1) + "%";
-
-      lastTime = now;
-      requestAnimationFrame(animate);
-    }
-
-    /* Init */
-    if (reduceMotion) {
-      sprite.style.backgroundPosition = "0 0";
     } else {
-      requestAnimationFrame(animate);
+      // Reduced motion: show all sections immediately
+      $$(".hero-anim, .reveal, .reveal--mask, .hero-item").forEach(function (el) {
+        el.style.opacity = "1";
+        el.style.transform = "none";
+      });
+      $$(".reveal--mask .frame").forEach(function (f) {
+        f.style.clipPath = "none";
+      });
     }
-  })();
+  }
+
+  /* ============================================================
+     INIT — Wait for GSAP to load
+     ============================================================ */
+  function waitForGSAP(attempts) {
+    if (typeof gsap !== "undefined" && typeof ScrollTrigger !== "undefined") {
+      initPremiumMotion();
+    } else if (attempts < 50) {
+      setTimeout(function () { waitForGSAP(attempts + 1); }, 100);
+    } else {
+      // GSAP failed to load — graceful fallback
+      $$(".hero-anim, .hero-item").forEach(function (el) {
+        el.style.opacity = "1";
+        el.style.transform = "none";
+      });
+      var hv = $("#heroVideo");
+      if (hv) hv.style.opacity = "1";
+      body.classList.add("is-loaded");
+    }
+  }
+
+  // Start checking after preloader
+  if (reduceMotion) {
+    waitForGSAP(0);
+  } else {
+    // Wait for scripts to load
+    if (typeof gsap !== "undefined") {
+      waitForGSAP(0);
+    } else {
+      window.addEventListener("load", function () { waitForGSAP(0); });
+    }
+  }
+
 })();
