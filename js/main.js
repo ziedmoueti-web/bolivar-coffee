@@ -1,8 +1,6 @@
 /* ============================================================
-   BOLIVAR COFFEE & LOUNGE — premium motion system
-   GSAP + ScrollTrigger + Lenis smooth scroll.
-   Preserves: preloader, cursor, magnetic buttons, nav, mobile menu,
-   menu tabs, reviews counter, gallery lightbox, dish expand.
+   BOLIVAR COFFEE & LOUNGE — interactions
+   Vanilla JS, no dependencies. GPU-friendly, reduced-motion aware.
    ============================================================ */
 (function () {
   "use strict";
@@ -11,16 +9,13 @@
   var body = doc.body;
   var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var finePointer = window.matchMedia("(pointer: fine)").matches;
-  var isMobile = window.innerWidth < 768;
 
   var clamp = function (v, min, max) { return Math.max(min, Math.min(max, v)); };
   var lerp = function (a, b, t) { return a + (b - a) * t; };
   var $ = function (s, c) { return (c || doc).querySelector(s); };
   var $$ = function (s, c) { return Array.prototype.slice.call((c || doc).querySelectorAll(s)); };
 
-  /* ============================================================
-     PRELOADER
-     ============================================================ */
+  /* ---------- Preloader ---------- */
   var preloaderDone = false;
   function finishPreloader() {
     if (preloaderDone) return;
@@ -35,14 +30,14 @@
     finishPreloader();
   } else {
     window.addEventListener("load", function () {
+      // Small fixed delay so the word + line read before the reveal
       setTimeout(finishPreloader, 450);
     });
+    // Safety net — never let the preloader linger
     setTimeout(finishPreloader, 2600);
   }
 
-  /* ============================================================
-     CUSTOM CURSOR (desktop, fine pointer only)
-     ============================================================ */
+  /* ---------- Custom cursor (desktop, fine pointer only) ---------- */
   var cursor = null, dot = null, ring = null, label = null;
   var cx = 0, cy = 0, rx = 0, ry = 0;
   var cursorActive = false;
@@ -60,10 +55,16 @@
         cursorActive = true;
         rx = cx; ry = cy;
       }
-      dot.style.transform = "translate(" + cx + "px," + cy + "px)";
-      ring.style.transform = "translate(" + cx + "px," + cy + "px)";
-      if (label) label.style.transform = "translate(" + cx + "px," + cy + "px) translate(-50%,-50%)";
+      positionCursor(cx, cy, true);
     });
+
+    function positionCursor(x, y, snap) {
+      dot.style.transform = "translate(" + x + "px," + y + "px)";
+      if (snap) {
+        ring.style.transform = "translate(" + x + "px," + y + "px)";
+        if (label) label.style.transform = "translate(" + x + "px," + y + "px) translate(-50%,-50%)";
+      }
+    }
 
     function cursorLoop() {
       if (!cursorActive) return;
@@ -81,6 +82,7 @@
     });
     doc.addEventListener("mouseenter", function () { cursor.classList.add("is-active"); });
 
+    // Hover states via delegation
     doc.addEventListener("mouseover", function (e) {
       var t = e.target.closest("[data-cursor]");
       if (t) {
@@ -99,9 +101,7 @@
     if (c) c.parentNode.removeChild(c);
   }
 
-  /* ============================================================
-     MAGNETIC BUTTONS (desktop, subtle)
-     ============================================================ */
+  /* ---------- Magnetic buttons (desktop, subtle) ---------- */
   if (finePointer && !reduceMotion) {
     $$("[data-magnetic]").forEach(function (el) {
       el.addEventListener("mousemove", function (e) {
@@ -116,9 +116,7 @@
     });
   }
 
-  /* ============================================================
-     NAVBAR SCROLL STATE
-     ============================================================ */
+  /* ---------- Navbar scroll state ---------- */
   var nav = $("#nav");
   var fab = $("#fab");
   function onScrollNav() {
@@ -129,9 +127,7 @@
   window.addEventListener("scroll", onScrollNav, { passive: true });
   onScrollNav();
 
-  /* ============================================================
-     MOBILE MENU
-     ============================================================ */
+  /* ---------- Mobile menu ---------- */
   var burger = $("#navBurger");
   var mobileMenu = $("#mobileMenu");
   function closeMenu() {
@@ -152,9 +148,7 @@
     });
   }
 
-  /* ============================================================
-     SMOOTH SCROLL FOR ANCHORS (fallback — Lenis handles smooth)
-     ============================================================ */
+  /* ---------- Smooth scroll for anchors ---------- */
   $$("[data-scroll]").forEach(function (link) {
     link.addEventListener("click", function (e) {
       var target = doc.querySelector(link.getAttribute("href"));
@@ -163,18 +157,56 @@
       closeMenu();
       var navH = nav ? nav.offsetHeight : 0;
       var top = target.getBoundingClientRect().top + window.scrollY - navH + 4;
-      if (reduceMotion || !window.__lenis) {
+      if (reduceMotion) {
         window.scrollTo(0, top);
       } else {
-        window.__lenis.scrollTo(target, { offset: -navH + 4 });
+        window.scrollTo({ top: top, behavior: "smooth" });
       }
       history.replaceState(null, "", link.getAttribute("href"));
     });
   });
 
-  /* ============================================================
-     MENU TABS
-     ============================================================ */
+  /* ---------- Scroll reveal ---------- */
+  var revealEls = $$(".reveal");
+  if ("IntersectionObserver" in window && !reduceMotion) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) {
+          en.target.classList.add("in-view");
+          io.unobserve(en.target);
+        }
+      });
+    }, { threshold: 0.14, rootMargin: "0px 0px -6% 0px" });
+    revealEls.forEach(function (el) { io.observe(el); });
+  } else {
+    revealEls.forEach(function (el) { el.classList.add("in-view"); });
+  }
+
+  /* ---------- Parallax (transform-only, rAF-throttled) ---------- */
+  var parallaxEls = $$("[data-parallax]");
+  var ticking = false;
+  function applyParallax() {
+    ticking = false;
+    var vh = window.innerHeight;
+    parallaxEls.forEach(function (el) {
+      var r = el.getBoundingClientRect();
+      if (r.bottom < -200 || r.top > vh + 200) return;
+      var speed = parseFloat(el.getAttribute("data-parallax")) || 0.08;
+      var offset = (r.top + r.height / 2 - vh / 2) * speed;
+      el.style.transform = "translate3d(0," + offset.toFixed(1) + "px,0)";
+    });
+  }
+  if (parallaxEls.length && !reduceMotion) {
+    window.addEventListener("scroll", function () {
+      if (!ticking) {
+        ticking = true;
+        requestAnimationFrame(applyParallax);
+      }
+    }, { passive: true });
+    applyParallax();
+  }
+
+  /* ---------- Menu tabs ---------- */
   var tabs = $$(".menu__tab");
   var grid = $("#menuGrid");
   var activeCat = "coffee";
@@ -192,6 +224,7 @@
       t.setAttribute("aria-selected", String(on));
     });
 
+    // Fade out current set
     var visible = $$(".dish.is-show", grid);
     visible.forEach(function (d) {
       d.style.transition = "opacity 0.24s ease, transform 0.24s ease";
@@ -200,6 +233,7 @@
     });
 
     setTimeout(function () {
+      // Hide all, reveal the target set with a stagger
       $$(".dish", grid).forEach(function (d) {
         d.style.transition = "";
         d.style.transitionDelay = "0s";
@@ -211,6 +245,8 @@
           dishesFor(cat).forEach(function (d, i) {
             d.style.transitionDelay = (i * 70) + "ms";
             d.classList.add("is-show");
+            // Clear the stagger delay once the entrance is done so hover
+            // transitions on the card are never delayed.
             setTimeout(function () { d.style.transitionDelay = "0s"; }, 700 + i * 70);
           });
         });
@@ -221,6 +257,7 @@
   tabs.forEach(function (t) {
     t.addEventListener("click", function () { showCategory(t.getAttribute("data-cat")); });
   });
+  // Initial state: show only the coffee set
   $$(".dish", grid).forEach(function (d) {
     if (d.getAttribute("data-category") !== activeCat) d.style.display = "none";
   });
@@ -233,6 +270,7 @@
     });
   });
 
+  // Mobile: tap a dish to expand (desktop hover equivalent)
   if (window.matchMedia("(hover: none)").matches) {
     grid.addEventListener("click", function (e) {
       var dish = e.target.closest(".dish");
@@ -243,9 +281,7 @@
     });
   }
 
-  /* ============================================================
-     REVIEW SCORE COUNTERS + STARS
-     ============================================================ */
+  /* ---------- Review score counters + stars ---------- */
   var score = $(".reviews__score");
   var counted = false;
   function animateCount(el) {
@@ -265,6 +301,7 @@
   function animateStars() {
     var i = 0;
     $$(".reviews__stars .star").forEach(function (s) {
+      // Keep the 5th star partial (70% fill) — it represents the 4.7 rating
       if (s.classList.contains("is-partial")) return;
       setTimeout(function () { s.classList.add("is-full"); }, 200 + i * 160);
       i++;
@@ -289,9 +326,7 @@
     $$("[data-count-to]", score).forEach(function (el) { el.textContent = el.getAttribute("data-count-to"); });
   }
 
-  /* ============================================================
-     GALLERY LIGHTBOX
-     ============================================================ */
+  /* ---------- Gallery lightbox ---------- */
   var items = $$(".g-item");
   var lightbox = $("#lightbox");
   var lbImg = $("#lbImg");
@@ -311,7 +346,7 @@
     lbShow(i);
     lightbox.classList.add("is-open");
     lightbox.setAttribute("aria-hidden", "false");
-    body.classList.add("menu-open");
+    body.classList.add("menu-open"); // lock scroll (reuses the same class)
   }
   function lbClose() {
     if (!lightbox) return;
@@ -337,6 +372,7 @@
       if (e.key === "ArrowLeft") lbShow(lbIndex - 1);
       if (e.key === "ArrowRight") lbShow(lbIndex + 1);
     });
+    // Basic swipe support
     var touchX = null;
     lightbox.addEventListener("touchstart", function (e) {
       touchX = e.changedTouches[0].clientX;
@@ -349,497 +385,244 @@
     }, { passive: true });
   }
 
-  /* ============================================================
-     GSAP + SCROLLTRIGGER + LENIS — Premium Motion System
-     ============================================================ */
-  function initPremiumMotion() {
-    if (typeof gsap === "undefined" || typeof ScrollTrigger === "undefined") {
-      // Fallback: just show everything
-      $$(".hero-anim, .reveal, .reveal--mask, .hero-item").forEach(function (el) {
-        el.style.opacity = "1";
-        el.style.transform = "none";
-      });
-      $$(".reveal--mask .frame").forEach(function (f) {
-        var after = f.querySelector("::after");
-      });
-      return;
-    }
-
-    gsap.registerPlugin(ScrollTrigger);
-
-    /* --- Lenis Smooth Scroll --- */
-    if (!reduceMotion && typeof Lenis !== "undefined") {
-      var lenis = new Lenis({
-        duration: 1.2,
-        easing: function (t) { return Math.min(1, 1.001 - Math.pow(2, -10 * t)); },
-        orientation: "vertical",
-        smoothWheel: true,
-        wheelMultiplier: 1,
-        touchMultiplier: 2,
-      });
-      window.__lenis = lenis;
-
-      lenis.on("scroll", ScrollTrigger.update);
-      gsap.ticker.add(function (time) {
-        lenis.raf(time * 1000);
-      });
-      gsap.ticker.lagSmoothing(0);
-
-      // Sync Lenis with anchor clicks
-      $$("[data-scroll]").forEach(function (link) {
-        link.addEventListener("click", function (e) {
-          var target = doc.querySelector(link.getAttribute("href"));
-          if (!target) return;
-          e.preventDefault();
-          closeMenu();
-          lenis.scrollTo(target, { offset: -(nav ? nav.offsetHeight : 0) + 4 });
-          history.replaceState(null, "", link.getAttribute("href"));
-        });
-      });
-    }
-
-    /* --- Hero Video Scroll Control --- */
-    var heroVideo = $("#heroVideo");
-    var hero = $("#home");
-    var heroOverlay = $(".hero__overlay");
-    var scrollCue = $(".hero__scroll");
-    var progressBar = $(".hero__progress-bar");      if (heroVideo && hero) {
-      // Start video muted so currentTime can be set (autoplay policy allows muted)
-      heroVideo.play().then(function () {
-        heroVideo.pause();
-      }).catch(function () {});
-
-      // Scroll-pinned hero sequence
-      if (!reduceMotion) {
-        var heroTl = gsap.timeline({
-          scrollTrigger: {
-            trigger: hero,
-            start: "top top",
-            end: "bottom bottom",
-            scrub: 1.5,
-            pin: false,
-            onUpdate: function (self) {
-              var progress = self.progress;
-              // Map scroll progress to video time
-              var duration = heroVideo.duration;
-              if (duration && isFinite(duration)) {
-                heroVideo.currentTime = progress * duration;
-              }
-              // Ken Burns zoom on video
-              var scale = 1.05 + progress * 0.1;
-              heroVideo.style.transform = "scale(" + scale.toFixed(4) + ")";
-              // Progress bar
-              if (progressBar) progressBar.style.width = (progress * 100).toFixed(1) + "%";
-              // Scroll cue
-              if (scrollCue) {
-                scrollCue.classList.toggle("is-hidden", progress > 0.05);
-              }
-              // Overlay intensity
-              if (heroOverlay) {
-                var overlayOpacity = 1 - progress * 0.3;
-                heroOverlay.style.opacity = clamp(overlayOpacity, 0.4, 1).toFixed(3);
-              }
-            }
-          }
-        });
-      } else {
-        // Reduced motion: just play the video normally
-        heroVideo.play().catch(function () {});
-      }
-
-      // Hero content parallax on scroll (separate from video)
-      if (!reduceMotion) {
-        var heroContent = $(".hero__content");
-        if (heroContent) {
-          gsap.to(heroContent, {
-            y: -120,
-            opacity: 0,
-            ease: "none",
-            scrollTrigger: {
-              trigger: hero,
-              start: "top top",
-              end: "60% top",
-              scrub: 1,
-            }
-          });
-        }
-      }
-    }
-
-    /* --- Hero Entrance Animation --- */
-    if (!reduceMotion) {
-      var heroEntrance = gsap.timeline({
-        delay: 0.6,
-        paused: true,
-        onStart: function () {
-          body.classList.add("is-loaded");
-        }
-      });
-
-      // Eyebrow slide up from below
-      heroEntrance.fromTo(".hero__eyebrow",
-        { y: 50, opacity: 0 },
-        { y: 0, opacity: 1, duration: 0.9, ease: "power3.out" },
-        0
-      );
-
-      // Title lines reveal with clip-path
-      heroEntrance.fromTo(".hero__title-line",
-        { clipPath: "inset(100% 0 0 0)" },
-        { clipPath: "inset(0% 0 0 0)", duration: 1.1, ease: "power3.out", stagger: 0.12 },
-        0.15
-      );
-
-      // Title words slide up inside their lines
-      heroEntrance.fromTo(".hero__title-word",
-        { y: 80 },
-        { y: 0, duration: 1.2, ease: "power3.out", stagger: 0.1 },
-        0.2
-      );
-
-      // Subtitle fade up
-      heroEntrance.fromTo(".hero__sub",
-        { y: 30, opacity: 0 },
-        { y: 0, opacity: 1, duration: 0.8, ease: "power2.out" },
-        0.5
-      );
-
-      // CTA buttons stagger in
-      heroEntrance.fromTo(".hero__cta .btn",
-        { y: 20, opacity: 0 },
-        { y: 0, opacity: 1, duration: 0.7, ease: "power2.out", stagger: 0.1 },
-        0.65
-      );
-
-      // Location line
-      heroEntrance.fromTo(".hero__loc",
-        { y: 15, opacity: 0 },
-        { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" },
-        0.85
-      );
-
-      // Scroll cue fade in
-      heroEntrance.fromTo(".hero__scroll",
-        { opacity: 0 },
-        { opacity: 1, duration: 0.8, ease: "power2.out" },
-        1.0
-      );
-
-      // Video fade in
-      if (heroVideo) {
-        heroEntrance.fromTo(heroVideo,
-          { scale: 1.15, opacity: 0 },
-          { scale: 1.05, opacity: 1, duration: 1.8, ease: "power2.out" },
-          0
-        );
-      }
-
-      // Play the entrance after preloader finishes
-      var checkReady = setInterval(function () {
-        if (preloaderDone) {
-          clearInterval(checkReady);
-          heroEntrance.play();
-        }
-      }, 50);
-      // Safety: play after max wait
-      setTimeout(function () {
-        clearInterval(checkReady);
-        if (heroEntrance.progress() === 0) heroEntrance.play();
-      }, 3500);
-    } else {
-      // Reduced motion: just show everything
-      body.classList.add("is-loaded");
-      $$(".hero-anim").forEach(function (el) {
-        el.style.opacity = "1";
-        el.style.transform = "none";
-      });
-      if (heroVideo) heroVideo.style.opacity = "1";
-    }
-
-    /* --- Section Reveals --- */
-    if (!reduceMotion) {
-      // About section: text stagger + image mask
-      ScrollTrigger.create({
-        trigger: "#about",
-        start: "top 80%",
-        once: true,
-        onEnter: function () {
-          var aboutTl = gsap.timeline();
-          aboutTl.fromTo("#about .eyebrow",
-            { y: 30, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.7, ease: "power2.out" }
-          );
-          aboutTl.fromTo("#about .h-display",
-            { y: 40, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.9, ease: "power3.out" },
-            "-=0.4"
-          );
-          aboutTl.fromTo("#about .intro__para",
-            { y: 25, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.7, ease: "power2.out" },
-            "-=0.5"
-          );
-          aboutTl.fromTo("#about .stat",
-            { y: 20, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.5, ease: "power2.out", stagger: 0.1 },
-            "-=0.3"
-          );
-          // Image reveal
-          var introFrame = $("#about .frame");
-          if (introFrame) {
-            gsap.fromTo(introFrame,
-              { clipPath: "inset(0 100% 0 0)" },
-              { clipPath: "inset(0 0% 0 0)", duration: 1.2, ease: "power3.inOut", delay: 0.3 }
-            );
-          }
-        }
-      });
-
-      // Atmosphere section
-      ScrollTrigger.create({
-        trigger: "#atmosphere",
-        start: "top 75%",
-        once: true,
-        onEnter: function () {
-          var atmTl = gsap.timeline();
-          atmTl.fromTo("#atmosphere .eyebrow",
-            { y: 30, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" }
-          );
-          atmTl.fromTo("#atmosphere .h-display",
-            { y: 40, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.8, ease: "power3.out" },
-            "-=0.3"
-          );
-          // Stagger the atmosphere images
-          $$("#atmosphere .atm").forEach(function (atm, i) {
-            gsap.fromTo(atm,
-              { y: 60, opacity: 0, scale: 0.95 },
-              { y: 0, opacity: 1, scale: 1, duration: 0.9, ease: "power2.out", delay: 0.2 + i * 0.12 }
-            );
-          });
-          // Note
-          gsap.fromTo("#atmosphere .atmosphere__note",
-            { y: 30, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.8, ease: "power2.out", delay: 0.8 }
-          );
-        }
-      });
-
-      // Menu section
-      ScrollTrigger.create({
-        trigger: "#menu",
-        start: "top 80%",
-        once: true,
-        onEnter: function () {
-          gsap.fromTo("#menu .eyebrow",
-            { y: 30, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" }
-          );
-          gsap.fromTo("#menu .h-display",
-            { y: 40, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.8, ease: "power3.out", delay: 0.1 }
-          );
-          gsap.fromTo("#menu .menu__note",
-            { y: 20, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.6, ease: "power2.out", delay: 0.2 }
-          );
-          gsap.fromTo("#menu .menu__tabs",
-            { y: 20, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.6, ease: "power2.out", delay: 0.3 }
-          );
-        }
-      });
-
-      // Picks section
-      ScrollTrigger.create({
-        trigger: "#picks",
-        start: "top 75%",
-        once: true,
-        onEnter: function () {
-          gsap.fromTo("#picks .eyebrow",
-            { y: 30, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" }
-          );
-          gsap.fromTo("#picks .h-display",
-            { y: 40, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.8, ease: "power3.out", delay: 0.1 }
-          );
-          $$("#picks .pick").forEach(function (pick, i) {
-            gsap.fromTo(pick,
-              { y: 50, opacity: 0 },
-              { y: 0, opacity: 1, duration: 0.8, ease: "power2.out", delay: 0.2 + i * 0.15 }
-            );
-          });
-        }
-      });
-
-      // Reviews section
-      ScrollTrigger.create({
-        trigger: "#reviews",
-        start: "top 80%",
-        once: true,
-        onEnter: function () {
-          gsap.fromTo("#reviews .eyebrow",
-            { y: 30, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" }
-          );
-          gsap.fromTo("#reviews .h-display",
-            { y: 40, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.8, ease: "power3.out", delay: 0.1 }
-          );
-          gsap.fromTo("#reviews .reviews__score",
-            { y: 30, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.7, ease: "power2.out", delay: 0.2 }
-          );
-          gsap.fromTo(".review",
-            { y: 40, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.7, ease: "power2.out", stagger: 0.12, delay: 0.3 }
-          );
-        }
-      });
-
-      // Gallery section
-      ScrollTrigger.create({
-        trigger: "#gallery",
-        start: "top 80%",
-        once: true,
-        onEnter: function () {
-          gsap.fromTo("#gallery .eyebrow",
-            { y: 30, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" }
-          );
-          gsap.fromTo("#gallery .h-display",
-            { y: 40, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.8, ease: "power3.out", delay: 0.1 }
-          );
-          $$(".g-item").forEach(function (item, i) {
-            gsap.fromTo(item,
-              { y: 40, opacity: 0, scale: 0.96 },
-              { y: 0, opacity: 1, scale: 1, duration: 0.7, ease: "power2.out", delay: 0.15 + i * 0.06 }
-            );
-          });
-        }
-      });
-
-      // Instagram section
-      ScrollTrigger.create({
-        trigger: "#instagram",
-        start: "top 80%",
-        once: true,
-        onEnter: function () {
-          gsap.fromTo("#instagram .eyebrow",
-            { y: 30, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" }
-          );
-          gsap.fromTo("#instagram .h-display",
-            { y: 40, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.8, ease: "power3.out", delay: 0.1 }
-          );
-          $$(".ig-tile").forEach(function (tile, i) {
-            gsap.fromTo(tile,
-              { y: 30, opacity: 0 },
-              { y: 0, opacity: 1, duration: 0.6, ease: "power2.out", delay: 0.2 + i * 0.06 }
-            );
-          });
-        }
-      });
-
-      // Location section (calmer)
-      ScrollTrigger.create({
-        trigger: "#location",
-        start: "top 80%",
-        once: true,
-        onEnter: function () {
-          gsap.fromTo("#location .eyebrow",
-            { y: 25, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.7, ease: "power2.out" }
-          );
-          gsap.fromTo("#location .h-display",
-            { y: 35, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.9, ease: "power3.out", delay: 0.1 }
-          );
-          $$(".loc-block").forEach(function (block, i) {
-            gsap.fromTo(block,
-              { y: 25, opacity: 0 },
-              { y: 0, opacity: 1, duration: 0.6, ease: "power2.out", delay: 0.2 + i * 0.08 }
-            );
-          });
-        }
-      });
-
-      // Parallax on images throughout the page
-      $$("[data-parallax]").forEach(function (el) {
-        var speed = parseFloat(el.getAttribute("data-parallax")) || 0.08;
-        gsap.to(el, {
-          y: speed * -150,
-          ease: "none",
-          scrollTrigger: {
-            trigger: el,
-            start: "top bottom",
-            end: "bottom top",
-            scrub: 1.5,
-          }
-        });
-      });
-
-      // Frame image reveal masks
-      $$(".reveal--mask .frame").forEach(function (frame) {
-        ScrollTrigger.create({
-          trigger: frame,
-          start: "top 85%",
-          once: true,
-          onEnter: function () {
-            gsap.fromTo(frame,
-              { clipPath: "inset(0 100% 0 0)" },
-              { clipPath: "inset(0 0% 0 0)", duration: 1.1, ease: "power3.inOut" }
-            );
-          }
-        });
-      });
-
-    } else {
-      // Reduced motion: show all sections immediately
-      $$(".hero-anim, .reveal, .reveal--mask, .hero-item").forEach(function (el) {
-        el.style.opacity = "1";
-        el.style.transform = "none";
-      });
-      $$(".reveal--mask .frame").forEach(function (f) {
-        f.style.clipPath = "none";
-      });
-    }
-  }
+  /* ---------- Footer year is static (© 2026) — nothing to do ---------- */
 
   /* ============================================================
-     INIT — Wait for GSAP to load
+     DYNAMIC CONTENT — Load from Supabase
+     Falls back gracefully if Supabase is not configured.
      ============================================================ */
-  function waitForGSAP(attempts) {
-    if (typeof gsap !== "undefined" && typeof ScrollTrigger !== "undefined") {
-      initPremiumMotion();
-    } else if (attempts < 50) {
-      setTimeout(function () { waitForGSAP(attempts + 1); }, 100);
-    } else {
-      // GSAP failed to load — graceful fallback
-      $$(".hero-anim, .hero-item").forEach(function (el) {
-        el.style.opacity = "1";
-        el.style.transform = "none";
+
+  (function () {
+    var B = window.BOLIVAR;
+    if (!B || !B.api) return;
+    var api = B.api;
+
+    /* --- Load menu items from database --- */
+    async function loadMenu() {
+      try {
+        var categories = await api.getCategories();
+        var items = await api.getAllMenuItems();
+
+        if (!items.length) return; // Keep hardcoded fallback
+
+        var grid = doc.getElementById('menuGrid');
+        if (!grid) return;
+
+        // Update tabs from database categories
+        var tabsContainer = doc.querySelector('.menu__tabs');
+        if (tabsContainer && categories.length) {
+          tabsContainer.innerHTML = categories.map(function (cat, i) {
+            return '<button class="menu__tab' + (i === 0 ? ' is-active' : '') + '" data-cat="' + cat.slug + '" role="tab" aria-selected="' + (i === 0 ? 'true' : 'false') + '">' + cat.name + '</button>';
+          }).join('');
+        }
+
+        // Build menu items HTML
+        grid.innerHTML = items.map(function (item) {
+          var cat = item.menu_categories ? item.menu_categories.slug : 'coffee';
+          var priceDisplay = item.price > 0 ? item.price.toFixed(3) + ' DT' : '—';
+          var imgSrc = item.image_url || 'https://images.unsplash.com/photo-1511920170033-f8396924c348?auto=format&fit=crop&w=700&q=80';
+          var imgAlt = item.image_alt || item.name;
+          return '<article class="dish is-show" data-category="' + cat + '" data-item-id="' + item.id + '">' +
+            '<div class="dish__media">' +
+            '  <img src="' + imgSrc + '" alt="' + imgAlt + '" loading="lazy" decoding="async">' +
+            '  <span class="dish__arrow" aria-hidden="true">→</span>' +
+            '</div>' +
+            '<div class="dish__body">' +
+            '  <div class="dish__head"><h3>' + item.name + '</h3><span class="dish__dots" aria-hidden="true"></span><span class="dish__price">' + priceDisplay + '</span></div>' +
+            '  <p class="dish__desc">' + (item.description || '') + '</p>' +
+            '</div>' +
+            '</article>';
+        }).join('');
+
+        // Re-initialize menu tabs with new DOM
+        reinitMenuTabs();
+
+      } catch (err) {
+        console.warn('[Bolivar] Could not load menu from database:', err.message);
+      }
+    }
+
+    function reinitMenuTabs() {
+      var newTabs = $$('.menu__tab');
+      var grid = doc.getElementById('menuGrid');
+      var newActive = 'coffee';
+
+      function dishesFor(cat) {
+        return $$('.dish', grid).filter(function (d) { return d.getAttribute('data-category') === cat; });
+      }
+
+      function showCategory(cat) {
+        if (cat === newActive) return;
+        newActive = cat;
+        newTabs.forEach(function (t) {
+          var on = t.getAttribute('data-cat') === cat;
+          t.classList.toggle('is-active', on);
+          t.setAttribute('aria-selected', String(on));
+        });
+        var visible = $$('.dish.is-show', grid);
+        visible.forEach(function (d) {
+          d.style.transition = 'opacity 0.24s ease, transform 0.24s ease';
+          d.style.transitionDelay = '0s';
+          d.classList.remove('is-show');
+        });
+        setTimeout(function () {
+          $$('.dish', grid).forEach(function (d) {
+            d.style.transition = '';
+            d.style.transitionDelay = '0s';
+            d.style.display = d.getAttribute('data-category') === cat ? '' : 'none';
+            d.classList.remove('is-show');
+          });
+          requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+              dishesFor(cat).forEach(function (d, i) {
+                d.style.transitionDelay = (i * 70) + 'ms';
+                d.classList.add('is-show');
+                setTimeout(function () { d.style.transitionDelay = '0s'; }, 700 + i * 70);
+              });
+            });
+          });
+        }, 240);
+      }
+
+      newTabs.forEach(function (t) {
+        t.addEventListener('click', function () { showCategory(t.getAttribute('data-cat')); });
       });
-      var hv = $("#heroVideo");
-      if (hv) hv.style.opacity = "1";
-      body.classList.add("is-loaded");
-    }
-  }
 
-  // Start checking after preloader
-  if (reduceMotion) {
-    waitForGSAP(0);
-  } else {
-    // Wait for scripts to load
-    if (typeof gsap !== "undefined") {
-      waitForGSAP(0);
-    } else {
-      window.addEventListener("load", function () { waitForGSAP(0); });
+      // Show first category
+      var firstCat = newTabs.length ? newTabs[0].getAttribute('data-cat') : 'coffee';
+      $$('.dish', grid).forEach(function (d) {
+        if (d.getAttribute('data-category') !== firstCat) d.style.display = 'none';
+      });
+      newActive = firstCat;
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          dishesFor(firstCat).forEach(function (d, i) {
+            d.style.transitionDelay = (i * 70) + 'ms';
+            d.classList.add('is-show');
+          });
+        });
+      });
     }
-  }
 
+    /* --- Load reviews from database --- */
+    async function loadReviews() {
+      try {
+        var reviews = await api.getApprovedReviews();
+        if (!reviews.length) return;
+
+        var rail = doc.querySelector('.reviews__rail');
+        if (!rail) return;
+
+        var ctaBlock = rail.querySelector('.review--cta');
+        rail.innerHTML = reviews.map(function (r) {
+          var stars = '';
+          for (var i = 0; i < 5; i++) {
+            stars += '<span' + (i < r.rating ? '' : ' style="opacity:.3"') + '>★</span>';
+          }
+          return '<figure class="review">' +
+            '<div class="review__stars" aria-hidden="true">' + stars + '</div>' +
+            '<blockquote>"' + r.content + '"</blockquote>' +
+            '<figcaption>' + (r.author_name || 'Guest') + (r.source === 'google' ? ' — Google Review' : '') + '</figcaption>' +
+            '</figure>';
+        }).join('');
+
+        // Add back the CTA
+        var cta = document.createElement('figure');
+        cta.className = 'review review--cta';
+        cta.innerHTML = '<p>Enjoyed your visit?</p>' +
+          '<a href="https://www.google.com/maps/search/?api=1&query=Bolivar+Coffee+Megrine" target=""_blank"" rel="noopener" data-cursor="OPEN">LEAVE A REVIEW <span aria-hidden="true">→</span></a>';
+        rail.appendChild(cta);
+
+        // Update score
+        var settings = await api.getSettings();
+        var ratingEl = doc.querySelector('.reviews__num[data-count-to]');
+        var countEl = doc.querySelector('.reviews__small [data-count-to]');
+        if (ratingEl && settings.google_rating) {
+          ratingEl.setAttribute('data-count-to', settings.google_rating);
+        }
+        if (countEl && settings.google_review_count) {
+          countEl.setAttribute('data-count-to', settings.google_review_count);
+        }
+
+      } catch (err) {
+        console.warn('[Bolivar] Could not load reviews:', err.message);
+      }
+    }
+
+    /* --- Load gallery from database --- */
+    async function loadGallery() {
+      try {
+        var images = await api.getGalleryImages();
+        if (!images.length) return;
+
+        var grid = doc.querySelector('.gallery__grid');
+        if (!grid) return;
+
+        var classes = ['g-item--a','g-item--b','g-item--c','g-item--d','g-item--e','g-item--f','g-item--g','g-item--h'];
+        grid.innerHTML = images.map(function (img, i) {
+          var cls = classes[i % classes.length];
+          return '<button class="g-item ' + cls + '" data-caption="' + (img.caption || img.alt || '') + '" data-cursor="VIEW">' +
+            '<img src="' + img.url + '" alt="' + (img.alt || 'Gallery image') + '" loading="lazy" decoding="async">' +
+            (img.caption ? '<span class="g-item__label">' + img.caption + '</span>' : '') +
+            '</button>';
+        }).join('');
+
+        // Re-init lightbox
+        items = $$('.g-item');
+        items.forEach(function (it, i) {
+          it.addEventListener('click', function () { lbOpen(i); });
+        });
+
+      } catch (err) {
+        console.warn('[Bolivar] Could not load gallery:', err.message);
+      }
+    }
+
+    /* --- Load business settings and update page --- */
+    async function loadSettings() {
+      try {
+        var s = await api.getSettings();
+        if (!s || !s.business_name) return;
+
+        // Update phone links
+        if (s.phone_raw) {
+          doc.querySelectorAll('a[href^="tel:"]').forEach(function (a) {
+            a.href = 'tel:' + s.phone_raw;
+            if (a.textContent.trim() === '' || a.textContent.includes('+216')) {
+              a.textContent = s.phone;
+            }
+          });
+        }
+
+        // Update address
+        // Update Instagram links
+        if (s.instagram) {
+          doc.querySelectorAll('a[href*="instagram.com"]').forEach(function (a) {
+            a.href = s.instagram;
+          });
+        }
+
+        // Update Google Maps
+        if (s.google_maps_url) {
+          doc.querySelectorAll('a[href*="google.com/maps/dir"]').forEach(function (a) {
+            a.href = s.google_maps_url;
+          });
+        }
+        if (s.google_maps_embed) {
+          var iframe = doc.querySelector('.location__map iframe');
+          if (iframe) iframe.src = s.google_maps_embed;
+        }
+
+      } catch (err) {
+        console.warn('[Bolivar] Could not load settings:', err.message);
+      }
+    }
+
+    /* --- Initialize all dynamic loading --- */
+    loadMenu();
+    loadReviews();
+    loadGallery();
+    loadSettings();
+
+  })();
 })();

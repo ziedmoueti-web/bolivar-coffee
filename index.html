@@ -67,11 +67,6 @@
 
   <link rel="stylesheet" href="css/style.css">
   <script>document.documentElement.classList.add('js');</script>
-
-  <!-- Premium animation libraries -->
-  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/gsap.min.js" defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/ScrollTrigger.min.js" defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/lenis@1.1.18/dist/lenis.min.js" defer></script>
 </head>
 
 <body id="top">
@@ -109,6 +104,11 @@
       </nav>
 
       <div class="nav__actions">
+        <!-- Cart button -->
+        <button class="nav__cart" data-cart-toggle aria-label="Open cart" style="position:relative;background:none;border:none;cursor:pointer;padding:.5rem;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="22" height="22"><path d="M4 7h16l-1.5 12h-13L4 7Z"/><path d="M9 10V7a3 3 0 0 1 6 0v3"/></svg>
+          <span class="cart-badge" data-cart-count style="position:absolute;top:0;right:0;background:var(--accent);color:#fff;border-radius:50%;min-width:18px;height:18px;font-size:.65rem;font-weight:600;display:flex;align-items:center;justify-content:center;display:none;"></span>
+        </button>
         <!-- EDITABLE: replace with the direct Glovo store link for Bolivar Coffee -->
         <a class="btn btn--nav" href="https://glovoapp.com/" target="_blank" rel="noopener" data-magnetic data-cursor="OPEN">
           ORDER <span class="btn__arrow" aria-hidden="true">→</span>
@@ -140,19 +140,19 @@
 
     <!-- ============ HERO ============ -->
     <section class="hero" id="home">
-      <div class="hero__video-wrap" aria-hidden="true">
-        <video class="hero__video" id="heroVideo" preload="auto" muted playsinline>
-          <source src="img/espresso.mp4" type="video/mp4">
-        </video>
+      <div class="hero__bg" aria-hidden="true">
+        <!-- EDITABLE: replace with a real cinematic photo/video of Bolivar -->
+        <img src="https://images.unsplash.com/photo-1497935586351-b67a49e012bf?auto=format&fit=crop&w=2000&q=80"
+             alt="" fetchpriority="high" decoding="async">
+        <div class="hero__overlay"></div>
       </div>
-      <div class="hero__overlay"></div>
 
       <div class="hero__content">
-        <p class="hero__eyebrow hero-anim" data-anim="hero">BOLIVAR COFFEE &amp; LOUNGE</p>
-        <h1 class="hero__title hero-anim" data-anim="hero"><span class="hero__title-line"><span class="hero__title-word">More Than</span></span><span class="hero__title-line"><span class="hero__title-word hero__title-word--italic">Coffee.</span></span></h1>
-        <p class="hero__sub hero-anim" data-anim="hero">A place to slow down, gather, taste and enjoy.</p>
+        <p class="hero__eyebrow hero-item" style="--d:.05s">BOLIVAR COFFEE &amp; LOUNGE</p>
+        <h1 class="hero__title hero-item" style="--d:.18s">More Than <em>Coffee.</em></h1>
+        <p class="hero__sub hero-item" style="--d:.32s">A place to slow down, gather, taste and enjoy.</p>
 
-        <div class="hero__cta hero-anim" data-anim="hero">
+        <div class="hero__cta hero-item" style="--d:.46s">
           <a class="btn btn--light" href="#menu" data-scroll data-magnetic data-cursor="OPEN">
             EXPLORE THE MENU <span class="btn__arrow" aria-hidden="true">→</span>
           </a>
@@ -161,14 +161,13 @@
           </a>
         </div>
 
-        <p class="hero__loc hero-anim" data-anim="hero">
+        <p class="hero__loc hero-item" style="--d:.60s">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 21s-7-5.1-7-11a7 7 0 1 1 14 0c0 5.9-7 11-7 11Z"/><circle cx="12" cy="10" r="2.6"/></svg>
           MEGRINE · TUNISIA
         </p>
       </div>
 
       <div class="hero__scroll" aria-hidden="true"><span>SCROLL</span><i></i></div>
-      <div class="hero__progress" aria-hidden="true"><div class="hero__progress-bar"></div></div>
     </section>
 
     <!-- ============ MARQUEE ============ -->
@@ -969,6 +968,53 @@
     </a>
   </div>
 
+  <!-- ============ CART OVERLAY ============ -->
+  <div class="cart-overlay" id="cartOverlay" aria-hidden="true"></div>
+
+  <!-- ============ CART DRAWER ============ -->
+  <aside class="cart-drawer" id="cartDrawer" aria-hidden="true" aria-label="Shopping cart">
+    <div class="cart-drawer__header">
+      <h3>Your Cart</h3>
+      <button class="cart-drawer__close" id="cartClose" aria-label="Close cart">×</button>
+    </div>
+    <div class="cart-drawer__items" id="cartItems">
+      <div class="cart__empty"><p>Your cart is empty</p><p class="cart__empty-sub">Browse the menu and add items to get started.</p></div>
+    </div>
+    <div class="cart-drawer__footer">
+      <div class="cart-drawer__total">
+        <span>Total</span>
+        <span id="cartTotal" data-cart-total>0.000 DT</span>
+      </div>
+      <button class="btn btn--dark" id="checkoutBtn" data-cart-toggle="order" disabled style="width:100%;margin-top:.75rem;">PLACE ORDER</button>
+    </div>
+  </aside>
+
+  <!-- ============ ORDER FORM MODAL ============ -->
+  <div class="order-modal" id="orderModal" aria-hidden="true" role="dialog" aria-label="Place order">
+    <div class="order-modal__overlay" data-close-order></div>
+    <div class="order-modal__content">
+      <button class="order-modal__close" data-close-order aria-label="Close">×</button>
+      <h2>Complete Your Order</h2>
+      <p class="order-modal__sub">Fill in your details to place the order.</p>
+      <form id="orderForm" class="order-form" novalidate>
+        <div class="form-group">
+          <label for="orderName">Your Name *</label>
+          <input type="text" id="orderName" name="name" required placeholder="e.g. Ahmed" autocomplete="name">
+        </div>
+        <div class="form-group">
+          <label for="orderPhone">Phone Number *</label>
+          <input type="tel" id="orderPhone" name="phone" required placeholder="e.g. +216 22 535 138" autocomplete="tel">
+        </div>
+        <div class="form-group">
+          <label for="orderNotes">Notes (optional)</label>
+          <textarea id="orderNotes" name="notes" rows="3" placeholder="Any special requests..."></textarea>
+        </div>
+        <div class="order-form__summary" id="orderSummary"></div>
+        <button type="submit" class="btn btn--dark" id="submitOrderBtn" style="width:100%;margin-top:1rem;">CONFIRM ORDER</button>
+      </form>
+    </div>
+  </div>
+
   <!-- ============ LIGHTBOX ============ -->
   <div class="lightbox" id="lightbox" aria-hidden="true" role="dialog" aria-label="Image viewer">
     <button class="lightbox__close" id="lbClose" aria-label="Close"><span></span><span></span></button>
@@ -980,6 +1026,9 @@
     <button class="lightbox__nav lightbox__nav--next" id="lbNext" aria-label="Next image">→</button>
   </div>
 
+  <script src="js/api.js"></script>
+  <script src="js/cart.js"></script>
+  <script src="js/order.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>
