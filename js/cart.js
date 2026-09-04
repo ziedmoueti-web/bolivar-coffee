@@ -9,6 +9,11 @@
   var B = window.BOLIVAR || {};
   var CART_KEY = 'bolivar_cart';
 
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   var cart = {
     items: [],
 
@@ -124,16 +129,16 @@
         } else {
           var html = '';
           this.items.forEach(function (item) {
-            html += '<div class="cart-item" data-id="' + item.id + '">';
+            html += '<div class="cart-item" data-id="' + escapeHtml(item.id) + '">';
             html += '  <div class="cart-item__info">';
-            html += '    <span class="cart-item__name">' + item.name + '</span>';
+            html += '    <span class="cart-item__name">' + escapeHtml(item.name) + '</span>';
             html += '    <span class="cart-item__price">' + item.price.toFixed(3) + ' DT</span>';
             html += '  </div>';
             html += '  <div class="cart-item__controls">';
-            html += '    <button class="cart-item__btn" data-action="decrease" data-id="' + item.id + '" aria-label="Decrease quantity">−</button>';
+            html += '    <button class="cart-item__btn" data-action="decrease" data-id="' + escapeHtml(item.id) + '" aria-label="Decrease quantity">\u2212</button>';
             html += '    <span class="cart-item__qty">' + item.quantity + '</span>';
-            html += '    <button class="cart-item__btn" data-action="increase" data-id="' + item.id + '" aria-label="Increase quantity">+</button>';
-            html += '    <button class="cart-item__btn cart-item__btn--remove" data-action="remove" data-id="' + item.id + '" aria-label="Remove item">✕</button>';
+            html += '    <button class="cart-item__btn" data-action="increase" data-id="' + escapeHtml(item.id) + '" aria-label="Increase quantity">+</button>';
+            html += '    <button class="cart-item__btn cart-item__btn--remove" data-action="remove" data-id="' + escapeHtml(item.id) + '" aria-label="Remove item">\u2715</button>';
             html += '  </div>';
             html += '</div>';
           });

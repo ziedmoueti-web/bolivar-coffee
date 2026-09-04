@@ -419,7 +419,7 @@ app.post('/api/orders', async (req, res) => {
         total,
         status: 'new'
       })
-      .select('id, tracking_token, order_number, total, status, created_at')
+      .select('id, tracking_token, total, status, created_at')
       .single();
 
     if (orderError) throw orderError;

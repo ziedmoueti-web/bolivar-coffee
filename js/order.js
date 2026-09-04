@@ -12,6 +12,11 @@
 
   if (!cart || !api) return;
 
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   /* ---------- Add to Cart buttons ---------- */
   function addCartButtons() {
     var dishes = document.querySelectorAll('.dish');
@@ -103,7 +108,7 @@
         var html = '<h4>Order Summary</h4>';
         cart.items.forEach(function (item) {
           html += '<div class="order-summary-item">';
-          html += '  <span>' + item.name + ' × ' + item.quantity + '</span>';
+          html += '  <span>' + escapeHtml(item.name) + ' \u00d7 ' + item.quantity + '</span>';
           html += '  <span>' + (item.price * item.quantity).toFixed(3) + ' DT</span>';
           html += '</div>';
         });

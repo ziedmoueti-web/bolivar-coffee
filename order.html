@@ -45,7 +45,6 @@
     }
     .order-confirm__card .order-num {
       font-family: var(--ff-display);
-      font-size: 1.2rem;
       color: var(--muted);
       margin: 1rem 0;
       word-break: break-all;
@@ -128,6 +127,13 @@
 
   <script>
   (function () {
+    function escapeHtml(str) {
+      if (!str) return '';
+      var div = document.createElement('div');
+      div.appendChild(document.createTextNode(String(str)));
+      return div.innerHTML;
+    }
+
     var params = new URLSearchParams(window.location.search);
     var token = params.get('token');
 
@@ -139,7 +145,7 @@
 
     document.getElementById('orderTracking').textContent = 'Tracking: ' + token.substring(0, 16) + '...';
 
-    fetch('/api/orders/track/' + token)
+    fetch('/api/orders/track/' + encodeURIComponent(token))
       .then(function (res) { return res.json(); })
       .then(function (order) {
         if (!order || order.error) {
@@ -148,14 +154,14 @@
         }
 
         var html = '';
-        html += '<div class="detail-row"><span>Name</span><span>' + order.customer_name + '</span></div>';
-        html += '<div class="detail-row"><span>Status</span><span style="text-transform:capitalize;font-weight:600;">' + order.status + '</span></div>';
-        html += '<div class="detail-row"><span>Date</span><span>' + new Date(order.created_at).toLocaleString() + '</span></div>';
+        html += '<div class="detail-row"><span>Name</span><span>' + escapeHtml(order.customer_name) + '</span></div>';
+        html += '<div class="detail-row"><span>Status</span><span style="text-transform:capitalize;font-weight:600;">' + escapeHtml(order.status) + '</span></div>';
+        html += '<div class="detail-row"><span>Date</span><span>' + escapeHtml(new Date(order.created_at).toLocaleString()) + '</span></div>';
         html += '<hr style="border:none;border-top:1px solid rgba(0,0,0,.08);margin:.5rem 0">';
         (order.items || []).forEach(function (item) {
-          html += '<div class="detail-row"><span>' + item.item_name_snapshot + ' × ' + item.quantity + '</span><span>' + item.subtotal.toFixed(3) + ' DT</span></div>';
+          html += '<div class="detail-row"><span>' + escapeHtml(item.item_name_snapshot) + ' &times; ' + item.quantity + '</span><span>' + Number(item.subtotal).toFixed(3) + ' DT</span></div>';
         });
-        html += '<div class="detail-row total"><span>Total</span><span>' + order.total.toFixed(3) + ' DT</span></div>';
+        html += '<div class="detail-row total"><span>Total</span><span>' + Number(order.total).toFixed(3) + ' DT</span></div>';
         document.getElementById('orderDetails').innerHTML = html;
       })
       .catch(function () {
