@@ -45,9 +45,11 @@
     }
     .order-confirm__card .order-num {
       font-family: var(--ff-display);
-      font-size: 2.4rem;
-      color: var(--accent);
+      font-size: 1.2rem;
+      color: var(--muted);
       margin: 1rem 0;
+      word-break: break-all;
+      font-size: .85rem;
     }
     .order-confirm__details {
       text-align: left;
@@ -82,6 +84,17 @@
       color: var(--muted);
       line-height: 1.5;
     }
+    .tracking-link {
+      display: inline-block;
+      margin-top: 1rem;
+      padding: .5rem 1rem;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: .85rem;
+      font-weight: 600;
+    }
     @media (max-width: 600px) {
       .order-confirm__card { padding: 2rem 1.5rem; }
       .order-confirm__card h1 { font-size: 1.4rem; }
@@ -95,10 +108,10 @@
       <h1>Order Confirmed!</h1>
       <p>We've received your order and will prepare it shortly.</p>
 
-      <div class="order-num" id="orderNumber">—</div>
+      <div class="order-num" id="orderTracking">Loading...</div>
 
       <div class="order-confirm__details" id="orderDetails">
-        <!-- Populated by JS -->
+        <p style="text-align:center;color:var(--muted);">Loading order details...</p>
       </div>
 
       <div class="order-confirm__actions">
@@ -107,7 +120,7 @@
       </div>
 
       <p class="order-confirm__note">
-        You'll be notified when your order is ready.<br>
+        Save this page to track your order status.<br>
         For questions, call us at <a href="tel:+21622535138">+216 22 535 138</a>
       </p>
     </div>
@@ -116,37 +129,38 @@
   <script>
   (function () {
     var params = new URLSearchParams(window.location.search);
-    var orderId = params.get('id');
-    var orderNumber = params.get('number');
+    var token = params.get('token');
 
-    if (orderNumber) {
-      document.getElementById('orderNumber').textContent = '#' + orderNumber;
+    if (!token) {
+      document.getElementById('orderTracking').textContent = 'No order found.';
+      document.getElementById('orderDetails').innerHTML = '<p style="text-align:center;">Please use the link from your order confirmation.</p>';
+      return;
     }
 
-    if (!orderId) return;
+    document.getElementById('orderTracking').textContent = 'Tracking: ' + token.substring(0, 16) + '...';
 
-    fetch('/api/orders/' + orderId)
+    fetch('/api/orders/track/' + token)
       .then(function (res) { return res.json(); })
       .then(function (order) {
-        if (!order || order.error) return;
+        if (!order || order.error) {
+          document.getElementById('orderDetails').innerHTML = '<p style="text-align:center;">Order not found.</p>';
+          return;
+        }
+
         var html = '';
         html += '<div class="detail-row"><span>Name</span><span>' + order.customer_name + '</span></div>';
-        html += '<div class="detail-row"><span>Phone</span><span>' + order.customer_phone + '</span></div>';
-        if (order.notes) {
-          html += '<div class="detail-row"><span>Notes</span><span>' + order.notes + '</span></div>';
-        }
-        html += '<div class="detail-row"><span>Status</span><span style="text-transform:capitalize">' + order.status + '</span></div>';
+        html += '<div class="detail-row"><span>Status</span><span style="text-transform:capitalize;font-weight:600;">' + order.status + '</span></div>';
+        html += '<div class="detail-row"><span>Date</span><span>' + new Date(order.created_at).toLocaleString() + '</span></div>';
         html += '<hr style="border:none;border-top:1px solid rgba(0,0,0,.08);margin:.5rem 0">';
-        order.order_items.forEach(function (item) {
-          html += '<div class="detail-row"><span>' + item.menu_item_name + ' × ' + item.quantity + '</span><span>' + item.subtotal.toFixed(3) + ' DT</span></div>';
+        (order.items || []).forEach(function (item) {
+          html += '<div class="detail-row"><span>' + item.item_name_snapshot + ' × ' + item.quantity + '</span><span>' + item.subtotal.toFixed(3) + ' DT</span></div>';
         });
         html += '<div class="detail-row total"><span>Total</span><span>' + order.total.toFixed(3) + ' DT</span></div>';
         document.getElementById('orderDetails').innerHTML = html;
-        if (!orderNumber) {
-          document.getElementById('orderNumber').textContent = '#' + order.order_number;
-        }
       })
-      .catch(function () {});
+      .catch(function () {
+        document.getElementById('orderDetails').innerHTML = '<p style="text-align:center;">Failed to load order details.</p>';
+      });
   })();
   </script>
 </body>

@@ -1,6 +1,6 @@
 /* ============================================================
-   BOLIVAR COFFEE — Order Flow
-   Handles checkout, order form, and order submission.
+   BOLIVAR COFFEE — Order Flow (Production)
+   Sends menu_item_id + quantity only. Server fetches real prices.
    ============================================================ */
 
 (function () {
@@ -13,7 +13,6 @@
   if (!cart || !api) return;
 
   /* ---------- Add to Cart buttons ---------- */
-
   function addCartButtons() {
     var dishes = document.querySelectorAll('.dish');
     dishes.forEach(function (dish) {
@@ -22,22 +21,16 @@
       var media = dish.querySelector('.dish__media');
       if (!media) return;
 
-      // Get item data from the dish card
       var name = (dish.querySelector('h3') || {}).textContent || '';
       var priceText = (dish.querySelector('.dish__price') || {}).textContent || '0';
       var img = dish.querySelector('img');
       var imgSrc = img ? img.src : '';
-      var imgAlt = img ? img.alt : '';
 
-      // Extract numeric price (handle "—", "4.500 DT", etc.)
       var priceNum = parseFloat(priceText.replace(/[^0-9.,]/g, '').replace(',', '.')) || 0;
-
-      // Get the item id (set by dynamic loading or generate from name)
       var itemId = dish.getAttribute('data-item-id') || ('static-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
 
       var btn = document.createElement('button');
       btn.className = 'dish__cart-btn';
-      btn.setAttribute('data-cursor', 'ADD');
       btn.setAttribute('aria-label', 'Add ' + name + ' to cart');
       btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
 
@@ -52,7 +45,6 @@
           image_url: imgSrc
         });
 
-        // Visual feedback
         btn.classList.add('is-added');
         btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18"><polyline points="20 6 9 17 4 12"/></svg>';
 
@@ -61,7 +53,7 @@
           btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
         }, 1200);
 
-        // Open cart briefly
+        // Briefly show cart
         var drawer = document.getElementById('cartDrawer');
         if (drawer && !drawer.classList.contains('is-open')) {
           drawer.classList.add('is-open');
@@ -79,42 +71,33 @@
     });
   }
 
-  // Run after a short delay to let the DOM settle
   setTimeout(addCartButtons, 500);
-  // Also re-run when menu items change (e.g., tab switch)
   var menuGrid = document.getElementById('menuGrid');
   if (menuGrid) {
-    var observer = new MutationObserver(function () {
-      setTimeout(addCartButtons, 100);
-    });
+    var observer = new MutationObserver(function () { setTimeout(addCartButtons, 100); });
     observer.observe(menuGrid, { childList: true, subtree: true });
   }
 
   /* ---------- Checkout button opens order modal ---------- */
-
   document.addEventListener('click', function (e) {
     var checkoutBtn = e.target.closest('#checkoutBtn');
     if (!checkoutBtn && e.target.closest('[data-cart-toggle="order"]')) {
       checkoutBtn = e.target.closest('[data-cart-toggle="order"]');
     }
-    if (!checkoutBtn) return;
-    if (cart.isEmpty()) return;
+    if (!checkoutBtn || cart.isEmpty()) return;
 
-    // Close cart drawer
     var drawer = document.getElementById('cartDrawer');
     if (drawer) {
       drawer.classList.remove('is-open');
       drawer.setAttribute('aria-hidden', 'true');
     }
 
-    // Open order modal
     var modal = document.getElementById('orderModal');
     if (modal) {
       modal.classList.add('is-open');
       modal.setAttribute('aria-hidden', 'false');
       document.body.classList.add('menu-open');
 
-      // Populate order summary
       var summary = document.getElementById('orderSummary');
       if (summary) {
         var html = '<h4>Order Summary</h4>';
@@ -134,7 +117,6 @@
   });
 
   /* ---------- Close order modal ---------- */
-
   document.addEventListener('click', function (e) {
     if (e.target.closest('[data-close-order]')) {
       var modal = document.getElementById('orderModal');
@@ -158,7 +140,6 @@
   });
 
   /* ---------- Order form submission ---------- */
-
   var orderForm = document.getElementById('orderForm');
   if (orderForm) {
     orderForm.addEventListener('submit', async function (e) {
@@ -173,21 +154,10 @@
       var phone = (phoneInput.value || '').trim();
       var notes = (notesInput.value || '').trim();
 
-      // Validation
-      if (!name) {
-        nameInput.focus();
-        nameInput.classList.add('form-error');
-        return;
-      }
-      if (!phone) {
-        phoneInput.focus();
-        phoneInput.classList.add('form-error');
-        return;
-      }
-
+      if (!name) { nameInput.focus(); nameInput.classList.add('form-error'); return; }
+      if (!phone) { phoneInput.focus(); phoneInput.classList.add('form-error'); return; }
       if (cart.isEmpty()) return;
 
-      // Disable form
       submitBtn.disabled = true;
       submitBtn.textContent = 'PLACING ORDER...';
       nameInput.disabled = true;
@@ -195,19 +165,25 @@
       notesInput.disabled = true;
 
       try {
-        var order = await api.createOrder({
-          name: name,
-          phone: phone,
-          notes: notes,
-          total: cart.getSubtotal(),
-          items: cart.items
-        });
+        // Send ONLY menu_item_id and quantity — server fetches real prices
+        var orderData = {
+          customer_name: name,
+          customer_phone: phone,
+          customer_notes: notes,
+          items: cart.items.map(function (item) {
+            return {
+              menu_item_id: item.id,
+              quantity: item.quantity
+            };
+          })
+        };
 
-        // Clear cart
+        var result = await api.createOrder(orderData);
+
         cart.clear();
 
-        // Redirect to confirmation page
-        window.location.href = 'order.html?id=' + order.id + '&number=' + order.order_number;
+        // Redirect to confirmation with tracking token
+        window.location.href = 'order.html?token=' + result.tracking_token;
       } catch (err) {
         console.error('[Bolivar] Order failed:', err);
         alert('Sorry, something went wrong. Please try again or call us at +216 22 535 138.');

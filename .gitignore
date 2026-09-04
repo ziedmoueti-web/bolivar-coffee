@@ -15,20 +15,21 @@ Desktop.ini
 node_modules/
 package-lock.json
 
-# Database (auto-generated)
+# Database files (auto-generated)
 bolivar.json
 bolivar.db
 
 # Uploads (user content)
 uploads/
 
+# Environment secrets
+.env
+.env.local
+.env.production
+.env.*
+
 # Editor
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# Environment secrets
-.env
-.env.local
-.env.production

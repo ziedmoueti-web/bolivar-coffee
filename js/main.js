@@ -1,6 +1,7 @@
 /* ============================================================
    BOLIVAR COFFEE & LOUNGE — interactions
    Vanilla JS, no dependencies. GPU-friendly, reduced-motion aware.
+   Now with dynamic content loading from database.
    ============================================================ */
 (function () {
   "use strict";
@@ -30,10 +31,8 @@
     finishPreloader();
   } else {
     window.addEventListener("load", function () {
-      // Small fixed delay so the word + line read before the reveal
       setTimeout(finishPreloader, 450);
     });
-    // Safety net — never let the preloader linger
     setTimeout(finishPreloader, 2600);
   }
 
@@ -82,7 +81,6 @@
     });
     doc.addEventListener("mouseenter", function () { cursor.classList.add("is-active"); });
 
-    // Hover states via delegation
     doc.addEventListener("mouseover", function (e) {
       var t = e.target.closest("[data-cursor]");
       if (t) {
@@ -101,7 +99,7 @@
     if (c) c.parentNode.removeChild(c);
   }
 
-  /* ---------- Magnetic buttons (desktop, subtle) ---------- */
+  /* ---------- Magnetic buttons ---------- */
   if (finePointer && !reduceMotion) {
     $$("[data-magnetic]").forEach(function (el) {
       el.addEventListener("mousemove", function (e) {
@@ -148,7 +146,7 @@
     });
   }
 
-  /* ---------- Smooth scroll for anchors ---------- */
+  /* ---------- Smooth scroll ---------- */
   $$("[data-scroll]").forEach(function (link) {
     link.addEventListener("click", function (e) {
       var target = doc.querySelector(link.getAttribute("href"));
@@ -182,7 +180,7 @@
     revealEls.forEach(function (el) { el.classList.add("in-view"); });
   }
 
-  /* ---------- Parallax (transform-only, rAF-throttled) ---------- */
+  /* ---------- Parallax ---------- */
   var parallaxEls = $$("[data-parallax]");
   var ticking = false;
   function applyParallax() {
@@ -223,17 +221,13 @@
       t.classList.toggle("is-active", on);
       t.setAttribute("aria-selected", String(on));
     });
-
-    // Fade out current set
     var visible = $$(".dish.is-show", grid);
     visible.forEach(function (d) {
       d.style.transition = "opacity 0.24s ease, transform 0.24s ease";
       d.style.transitionDelay = "0s";
       d.classList.remove("is-show");
     });
-
     setTimeout(function () {
-      // Hide all, reveal the target set with a stagger
       $$(".dish", grid).forEach(function (d) {
         d.style.transition = "";
         d.style.transitionDelay = "0s";
@@ -245,8 +239,6 @@
           dishesFor(cat).forEach(function (d, i) {
             d.style.transitionDelay = (i * 70) + "ms";
             d.classList.add("is-show");
-            // Clear the stagger delay once the entrance is done so hover
-            // transitions on the card are never delayed.
             setTimeout(function () { d.style.transitionDelay = "0s"; }, 700 + i * 70);
           });
         });
@@ -257,7 +249,6 @@
   tabs.forEach(function (t) {
     t.addEventListener("click", function () { showCategory(t.getAttribute("data-cat")); });
   });
-  // Initial state: show only the coffee set
   $$(".dish", grid).forEach(function (d) {
     if (d.getAttribute("data-category") !== activeCat) d.style.display = "none";
   });
@@ -270,7 +261,6 @@
     });
   });
 
-  // Mobile: tap a dish to expand (desktop hover equivalent)
   if (window.matchMedia("(hover: none)").matches) {
     grid.addEventListener("click", function (e) {
       var dish = e.target.closest(".dish");
@@ -281,7 +271,7 @@
     });
   }
 
-  /* ---------- Review score counters + stars ---------- */
+  /* ---------- Review counters ---------- */
   var score = $(".reviews__score");
   var counted = false;
   function animateCount(el) {
@@ -301,7 +291,6 @@
   function animateStars() {
     var i = 0;
     $$(".reviews__stars .star").forEach(function (s) {
-      // Keep the 5th star partial (70% fill) — it represents the 4.7 rating
       if (s.classList.contains("is-partial")) return;
       setTimeout(function () { s.classList.add("is-full"); }, 200 + i * 160);
       i++;
@@ -346,7 +335,7 @@
     lbShow(i);
     lightbox.classList.add("is-open");
     lightbox.setAttribute("aria-hidden", "false");
-    body.classList.add("menu-open"); // lock scroll (reuses the same class)
+    body.classList.add("menu-open");
   }
   function lbClose() {
     if (!lightbox) return;
@@ -372,7 +361,6 @@
       if (e.key === "ArrowLeft") lbShow(lbIndex - 1);
       if (e.key === "ArrowRight") lbShow(lbIndex + 1);
     });
-    // Basic swipe support
     var touchX = null;
     lightbox.addEventListener("touchstart", function (e) {
       touchX = e.changedTouches[0].clientX;
@@ -385,60 +373,50 @@
     }, { passive: true });
   }
 
-  /* ---------- Footer year is static (© 2026) — nothing to do ---------- */
-
   /* ============================================================
-     DYNAMIC CONTENT — Load from Supabase
-     Falls back gracefully if Supabase is not configured.
+     DYNAMIC CONTENT — Load from database via REST API
+     Falls back gracefully if API is not available.
      ============================================================ */
-
   (function () {
     var B = window.BOLIVAR;
     if (!B || !B.api) return;
     var api = B.api;
 
-    /* --- Load menu items from database --- */
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
     async function loadMenu() {
       try {
         var categories = await api.getCategories();
-        var items = await api.getAllMenuItems();
-
-        if (!items.length) return; // Keep hardcoded fallback
-
+        var items = await api.getMenuItems();
+        if (!items.length) return;
         var grid = doc.getElementById('menuGrid');
         if (!grid) return;
 
-        // Update tabs from database categories
+        // Update tabs
         var tabsContainer = doc.querySelector('.menu__tabs');
         if (tabsContainer && categories.length) {
           tabsContainer.innerHTML = categories.map(function (cat, i) {
-            return '<button class="menu__tab' + (i === 0 ? ' is-active' : '') + '" data-cat="' + cat.slug + '" role="tab" aria-selected="' + (i === 0 ? 'true' : 'false') + '">' + cat.name + '</button>';
+            return '<button class="menu__tab' + (i === 0 ? ' is-active' : '') + '" data-cat="' + escapeHtml(cat.slug) + '" role="tab" aria-selected="' + (i === 0 ? 'true' : 'false') + '">' + escapeHtml(cat.name) + '</button>';
           }).join('');
         }
 
-        // Build menu items HTML
+        // Build menu
         grid.innerHTML = items.map(function (item) {
-          var cat = item.menu_categories ? item.menu_categories.slug : 'coffee';
+          var cat = item.category_slug || 'coffee';
           var priceDisplay = item.price > 0 ? item.price.toFixed(3) + ' DT' : '—';
           var imgSrc = item.image_url || 'https://images.unsplash.com/photo-1511920170033-f8396924c348?auto=format&fit=crop&w=700&q=80';
-          var imgAlt = item.image_alt || item.name;
-          return '<article class="dish is-show" data-category="' + cat + '" data-item-id="' + item.id + '">' +
-            '<div class="dish__media">' +
-            '  <img src="' + imgSrc + '" alt="' + imgAlt + '" loading="lazy" decoding="async">' +
-            '  <span class="dish__arrow" aria-hidden="true">→</span>' +
-            '</div>' +
-            '<div class="dish__body">' +
-            '  <div class="dish__head"><h3>' + item.name + '</h3><span class="dish__dots" aria-hidden="true"></span><span class="dish__price">' + priceDisplay + '</span></div>' +
-            '  <p class="dish__desc">' + (item.description || '') + '</p>' +
-            '</div>' +
-            '</article>';
+          return '<article class="dish is-show" data-category="' + escapeHtml(cat) + '" data-item-id="' + escapeHtml(item.id) + '">' +
+            '<div class="dish__media"><img src="' + escapeHtml(imgSrc) + '" alt="' + escapeHtml(item.name) + '" loading="lazy" decoding="async"><span class="dish__arrow" aria-hidden="true">→</span></div>' +
+            '<div class="dish__body"><div class="dish__head"><h3>' + escapeHtml(item.name) + '</h3><span class="dish__dots" aria-hidden="true"></span><span class="dish__price">' + priceDisplay + '</span></div>' +
+            '<p class="dish__desc">' + escapeHtml(item.description) + '</p></div></article>';
         }).join('');
 
-        // Re-initialize menu tabs with new DOM
         reinitMenuTabs();
-
       } catch (err) {
-        console.warn('[Bolivar] Could not load menu from database:', err.message);
+        console.warn('[Bolivar] Could not load menu:', err.message);
       }
     }
 
@@ -446,11 +424,9 @@
       var newTabs = $$('.menu__tab');
       var grid = doc.getElementById('menuGrid');
       var newActive = 'coffee';
-
       function dishesFor(cat) {
         return $$('.dish', grid).filter(function (d) { return d.getAttribute('data-category') === cat; });
       }
-
       function showCategory(cat) {
         if (cat === newActive) return;
         newActive = cat;
@@ -483,12 +459,9 @@
           });
         }, 240);
       }
-
       newTabs.forEach(function (t) {
         t.addEventListener('click', function () { showCategory(t.getAttribute('data-cat')); });
       });
-
-      // Show first category
       var firstCat = newTabs.length ? newTabs[0].getAttribute('data-cat') : 'coffee';
       $$('.dish', grid).forEach(function (d) {
         if (d.getAttribute('data-category') !== firstCat) d.style.display = 'none';
@@ -504,125 +477,56 @@
       });
     }
 
-    /* --- Load reviews from database --- */
     async function loadReviews() {
       try {
         var reviews = await api.getApprovedReviews();
         if (!reviews.length) return;
-
         var rail = doc.querySelector('.reviews__rail');
         if (!rail) return;
-
-        var ctaBlock = rail.querySelector('.review--cta');
         rail.innerHTML = reviews.map(function (r) {
           var stars = '';
-          for (var i = 0; i < 5; i++) {
-            stars += '<span' + (i < r.rating ? '' : ' style="opacity:.3"') + '>★</span>';
-          }
-          return '<figure class="review">' +
-            '<div class="review__stars" aria-hidden="true">' + stars + '</div>' +
-            '<blockquote>"' + r.content + '"</blockquote>' +
-            '<figcaption>' + (r.author_name || 'Guest') + (r.source === 'google' ? ' — Google Review' : '') + '</figcaption>' +
-            '</figure>';
-        }).join('');
-
-        // Add back the CTA
-        var cta = document.createElement('figure');
-        cta.className = 'review review--cta';
-        cta.innerHTML = '<p>Enjoyed your visit?</p>' +
-          '<a href="https://www.google.com/maps/search/?api=1&query=Bolivar+Coffee+Megrine" target=""_blank"" rel="noopener" data-cursor="OPEN">LEAVE A REVIEW <span aria-hidden="true">→</span></a>';
-        rail.appendChild(cta);
-
-        // Update score
-        var settings = await api.getSettings();
-        var ratingEl = doc.querySelector('.reviews__num[data-count-to]');
-        var countEl = doc.querySelector('.reviews__small [data-count-to]');
-        if (ratingEl && settings.google_rating) {
-          ratingEl.setAttribute('data-count-to', settings.google_rating);
-        }
-        if (countEl && settings.google_review_count) {
-          countEl.setAttribute('data-count-to', settings.google_review_count);
-        }
-
+          for (var i = 0; i < 5; i++) stars += '<span' + (i < r.rating ? '' : ' style="opacity:.3"') + '>★</span>';
+          return '<figure class="review"><div class="review__stars" aria-hidden="true">' + stars + '</div><blockquote>"' + escapeHtml(r.content) + '"</blockquote><figcaption>' + escapeHtml(r.customer_name || 'Guest') + (r.source === 'google' ? ' — Google Review' : '') + '</figcaption></figure>';
+        }).join('') + '<figure class="review review--cta"><p>Enjoyed your visit?</p><a href="https://www.google.com/maps/search/?api=1&query=Bolivar+Coffee+Megrine" target="_blank" rel="noopener" data-cursor="OPEN">LEAVE A REVIEW <span aria-hidden="true">→</span></a></figure>';
       } catch (err) {
         console.warn('[Bolivar] Could not load reviews:', err.message);
       }
     }
 
-    /* --- Load gallery from database --- */
     async function loadGallery() {
       try {
         var images = await api.getGalleryImages();
         if (!images.length) return;
-
         var grid = doc.querySelector('.gallery__grid');
         if (!grid) return;
-
         var classes = ['g-item--a','g-item--b','g-item--c','g-item--d','g-item--e','g-item--f','g-item--g','g-item--h'];
         grid.innerHTML = images.map(function (img, i) {
           var cls = classes[i % classes.length];
-          return '<button class="g-item ' + cls + '" data-caption="' + (img.caption || img.alt || '') + '" data-cursor="VIEW">' +
-            '<img src="' + img.url + '" alt="' + (img.alt || 'Gallery image') + '" loading="lazy" decoding="async">' +
-            (img.caption ? '<span class="g-item__label">' + img.caption + '</span>' : '') +
-            '</button>';
+          return '<button class="g-item ' + cls + '" data-caption="' + escapeHtml(img.title || img.caption || '') + '" data-cursor="VIEW"><img src="' + escapeHtml(img.image_url) + '" alt="' + escapeHtml(img.title || img.caption || 'Gallery') + '" loading="lazy" decoding="async">' + ((img.title || img.caption) ? '<span class="g-item__label">' + escapeHtml(img.title || img.caption) + '</span>' : '') + '</button>';
         }).join('');
-
         // Re-init lightbox
         items = $$('.g-item');
-        items.forEach(function (it, i) {
-          it.addEventListener('click', function () { lbOpen(i); });
-        });
-
+        items.forEach(function (it, i) { it.addEventListener('click', function () { lbOpen(i); }); });
       } catch (err) {
         console.warn('[Bolivar] Could not load gallery:', err.message);
       }
     }
 
-    /* --- Load business settings and update page --- */
     async function loadSettings() {
       try {
         var s = await api.getSettings();
         if (!s || !s.business_name) return;
-
-        // Update phone links
-        if (s.phone_raw) {
-          doc.querySelectorAll('a[href^="tel:"]').forEach(function (a) {
-            a.href = 'tel:' + s.phone_raw;
-            if (a.textContent.trim() === '' || a.textContent.includes('+216')) {
-              a.textContent = s.phone;
-            }
-          });
-        }
-
-        // Update address
-        // Update Instagram links
-        if (s.instagram) {
-          doc.querySelectorAll('a[href*="instagram.com"]').forEach(function (a) {
-            a.href = s.instagram;
-          });
-        }
-
-        // Update Google Maps
-        if (s.google_maps_url) {
-          doc.querySelectorAll('a[href*="google.com/maps/dir"]').forEach(function (a) {
-            a.href = s.google_maps_url;
-          });
-        }
-        if (s.google_maps_embed) {
-          var iframe = doc.querySelector('.location__map iframe');
-          if (iframe) iframe.src = s.google_maps_embed;
-        }
-
+        if (s.instagram) doc.querySelectorAll('a[href*="instagram.com"]').forEach(function (a) { a.href = s.instagram; });
+        if (s.google_maps_url) doc.querySelectorAll('a[href*="google.com/maps/dir"]').forEach(function (a) { a.href = s.google_maps_url; });
       } catch (err) {
         console.warn('[Bolivar] Could not load settings:', err.message);
       }
     }
 
-    /* --- Initialize all dynamic loading --- */
     loadMenu();
     loadReviews();
     loadGallery();
     loadSettings();
-
   })();
+
 })();

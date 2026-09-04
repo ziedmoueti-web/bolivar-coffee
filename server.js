@@ -1,466 +1,948 @@
 #!/usr/bin/env node
 /* ============================================================
-   BOLIVAR COFFEE & LOUNGE — Server
-   Express + JSON file database. Zero native dependencies.
+   BOLIVAR COFFEE & LOUNGE — Production Server
+   Express + Supabase PostgreSQL. Zero local persistence.
    ============================================================ */
 
+require('dotenv').config();
 const express = require('express');
 const path = require('path');
-const bcrypt = require('bcryptjs');
+const { createClient } = require('@supabase/supabase-js');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
-const fs = require('fs');
 const crypto = require('crypto');
-const db = require('./database');
+const helmet = require('helmet');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'bolivar-coffee-secret-' + crypto.randomBytes(16).toString('hex');
 
 /* ============================================================
-   SEED DATA
+   ENVIRONMENT VALIDATION
    ============================================================ */
-function seedIfEmpty() {
-  if (db.count('menu_categories') > 0) return;
-  console.log('🌱 Seeding database...');
-
-  // Categories
-  const cats = [
-    { name: 'Coffee', slug: 'coffee', sort_order: 1 },
-    { name: 'Breakfast', slug: 'breakfast', sort_order: 2 },
-    { name: 'Crêpes', slug: 'crepes', sort_order: 3 },
-    { name: 'Food', slug: 'food', sort_order: 4 },
-    { name: 'Drinks', slug: 'drinks', sort_order: 5 },
-    { name: 'Desserts', slug: 'desserts', sort_order: 6 },
-    { name: 'Lounge', slug: 'lounge', sort_order: 7 },
-  ];
-  cats.forEach(c => db.insert('menu_categories', { ...c, is_active: true }));
-
-  const catId = (slug) => db.get('menu_categories', c => c.slug === slug).id;
-
-  // Menu items
-  const items = [
-    // Coffee
-    { cat: 'coffee', name: 'Espresso', desc: 'Short, intense, velvety crema.', price: 3.5, img: 'https://images.unsplash.com/photo-1511920170033-f8396924c348?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'coffee', name: 'Café Crème', desc: 'Espresso softened with warm milk.', price: 4.5, img: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'coffee', name: 'Cappuccino', desc: 'Equal parts espresso, milk and foam.', price: 5.0, img: 'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?auto=format&fit=crop&w=700&q=80', featured: true },
-    { cat: 'coffee', name: 'Latte', desc: 'Smooth espresso with silky steamed milk.', price: 5.0, img: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'coffee', name: 'Flat White', desc: 'Double ristretto, velvety texture.', price: 5.5, img: 'https://images.unsplash.com/photo-1447933601403-0c6688de566e?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'coffee', name: 'Café Filtre', desc: 'Slow-brewed and aromatic.', price: 4.0, img: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?auto=format&fit=crop&w=700&q=80' },
-    // Breakfast
-    { cat: 'breakfast', name: 'Petit Déjeuner Continental', desc: 'Coffee or tea, fresh bread, butter and jam.', price: 8.0, img: 'https://images.unsplash.com/photo-1484723091739-30a097e8f929?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'breakfast', name: 'Petit Déjeuner Bolivar', desc: 'The house breakfast — generous and warm.', price: 12.0, img: 'https://images.unsplash.com/photo-1519677100203-a0e668c92439?auto=format&fit=crop&w=700&q=80', featured: true },
-    { cat: 'breakfast', name: 'Pain & Viennoiserie', desc: 'Freshly baked, served warm.', price: 4.0, img: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'breakfast', name: 'Œufs & Toast', desc: 'Eggs your way on toasted bread.', price: 7.0, img: 'https://images.unsplash.com/photo-1482049016688-2d3e1b311543?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'breakfast', name: 'Avocado Toast', desc: 'Smashed avocado on toasted bread.', price: 9.0, img: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=700&q=80' },
-    // Crêpes
-    { cat: 'crepes', name: 'Crêpe Chocolat', desc: 'Warm crêpe filled with rich chocolate.', price: 6.0, img: 'https://images.unsplash.com/photo-1550507992-eb63ffee0847?auto=format&fit=crop&w=700&q=80', featured: true },
-    { cat: 'crepes', name: 'Crêpe Sucre Citron', desc: 'The classic — sugar and lemon.', price: 4.0, img: 'https://images.unsplash.com/photo-1519677100203-a0e668c92439?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'crepes', name: 'Crêpe Fruits', desc: 'Seasonal fruit, lightly dusted.', price: 6.0, img: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'crepes', name: 'Crêpe Salée', desc: 'Ham and cheese, gratinated.', price: 7.0, img: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=700&q=80' },
-    // Food
-    { cat: 'food', name: 'Escalope Pané', desc: 'Generous portions, praised by our guests.', price: 14.0, img: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=700&q=80', featured: true },
-    { cat: 'food', name: 'Burger Bolivar', desc: 'House burger, served with fries.', price: 15.0, img: 'https://images.unsplash.com/photo-1551782450-a2132b4ba21d?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'food', name: 'Salade César', desc: 'Crisp leaves, parmesan, creamy dressing.', price: 10.0, img: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'food', name: 'Plat du Jour', desc: "Ask our team for today's special.", price: 12.0, img: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'food', name: 'Club Sandwich', desc: 'Triple-decker, served with fries.', price: 13.0, img: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=700&q=80' },
-    // Drinks
-    { cat: 'drinks', name: 'Thé à la Menthe', desc: 'Fresh mint tea, the Tunisian way.', price: 4.0, img: 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'drinks', name: 'Thé Vert', desc: 'Delicate and refreshing.', price: 4.0, img: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'drinks', name: "Jus d'Orange Frais", desc: 'Squeezed to order.', price: 5.0, img: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'drinks', name: 'Smoothie', desc: 'Fresh fruit blended with care.', price: 7.0, img: 'https://images.unsplash.com/photo-1544145945-f90425340c7e?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'drinks', name: 'Limonade', desc: 'Homemade lemonade, lightly sweet.', price: 5.0, img: 'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?auto=format&fit=crop&w=700&q=80' },
-    // Desserts
-    { cat: 'desserts', name: 'Fondant au Chocolat', desc: 'Molten chocolate, warm from the oven.', price: 7.0, img: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'desserts', name: 'Tiramisu', desc: 'Layered espresso-soaked classic.', price: 8.0, img: 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'desserts', name: 'Cheesecake', desc: 'Creamy, with a buttery base.', price: 8.0, img: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'desserts', name: 'Gâteau du Jour', desc: "Ask our team for today's cake.", price: 6.0, img: 'https://images.unsplash.com/photo-1488477181946-6428a0291777?auto=format&fit=crop&w=700&q=80' },
-    // Lounge
-    { cat: 'lounge', name: 'Café Signature', desc: 'Our house blend, served slowly.', price: 6.0, img: 'https://images.unsplash.com/photo-1447933601403-0c6688de566e?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'lounge', name: 'Thé Gourmand', desc: 'A pot of tea with a small sweet treat.', price: 8.0, img: 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'lounge', name: 'Chocolat Chaud', desc: 'Thick, dark and comforting.', price: 5.0, img: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=700&q=80' },
-    { cat: 'lounge', name: 'Infusion', desc: 'A calming herbal infusion.', price: 4.0, img: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=700&q=80' },
-  ];
-  items.forEach((item, i) => {
-    db.insert('menu_items', {
-      category_id: catId(item.cat),
-      name: item.name,
-      description: item.desc,
-      price: item.price,
-      image_url: item.img,
-      image_alt: item.name,
-      is_available: true,
-      is_featured: item.featured || false,
-      sort_order: i + 1,
-    });
-  });
-
-  // Reviews
-  db.insert('reviews', { author_name: 'Google Review', rating: 5, content: 'Propreté, décor minimaliste avec une touche naturelle qui apporte fraîcheur et sérénité à l espace, serveurs polis et ambiance calme.', source: 'google', is_approved: true });
-  db.insert('reviews', { author_name: 'Google Review', rating: 5, content: 'Petit déjeuner délicieux avec une bonne ambiance cozy.', source: 'google', is_approved: true });
-  db.insert('reviews', { author_name: 'Google Review', rating: 5, content: 'Un passage pour déguster une tasse de thé et surprise c était superbe.', source: 'google', is_approved: true });
-
-  // Gallery
-  [
-    { url: 'https://images.unsplash.com/photo-1447933601403-0c6688de566e?auto=format&fit=crop&w=900&q=80', alt: 'Coffee', caption: 'Coffee', sort_order: 1 },
-    { url: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=900&q=80', alt: 'Interior', caption: 'Interior', sort_order: 2 },
-    { url: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=900&q=80', alt: 'Food', caption: 'Food', sort_order: 3 },
-    { url: 'https://images.unsplash.com/photo-1521017432531-fbd92d768814?auto=format&fit=crop&w=900&q=80', alt: 'Lounge', caption: 'Lounge', sort_order: 4 },
-    { url: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?auto=format&fit=crop&w=900&q=80', alt: 'Espresso', caption: 'Espresso', sort_order: 5 },
-    { url: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=900&q=80', alt: 'Moments', caption: 'Moments', sort_order: 6 },
-    { url: 'https://images.unsplash.com/photo-1559925393-8be0ec4767c8?auto=format&fit=crop&w=900&q=80', alt: 'Atmosphere', caption: 'Atmosphere', sort_order: 7 },
-    { url: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=900&q=80', alt: 'Dessert', caption: 'Dessert', sort_order: 8 },
-  ].forEach(g => db.insert('gallery_images', g));
-
-  // Settings
-  [
-    ['business_name', 'Bolivar Coffee & Lounge'],
-    ['phone', '+216 22 535 138'],
-    ['phone_raw', '+21622535138'],
-    ['address', '87 Av. de la République, Megrine 2033, Tunisia'],
-    ['opening_hours', 'Monday — Sunday, 07:00 — 00:00'],
-    ['instagram', 'https://www.instagram.com/bolivar_coffeee'],
-    ['instagram_handle', '@bolivar_coffeee'],
-    ['glovo_url', 'https://glovoapp.com/'],
-    ['google_rating', '4.7'],
-    ['google_review_count', '24'],
-  ].forEach(([k, v]) => db.upsert('business_settings', { key: k, value: v }, 'key'));
-
-  // Default admin
-  const hash = bcrypt.hashSync('admin123', 10);
-  db.insert('admins', { email: 'admin@bolivar.coffee', password_hash: hash, full_name: 'Admin', role: 'admin' });
-  console.log('  ✅ Admin: admin@bolivar.coffee / admin123');
-  console.log('  ✅ 33 menu items, 3 reviews, 8 gallery images seeded');
+const required = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'JWT_SECRET'];
+const missing = required.filter(k => !process.env[k]);
+if (missing.length) {
+  console.error(`\n❌ Missing required environment variables: ${missing.join(', ')}`);
+  console.error('   Copy .env.example to .env and fill in your Supabase credentials.\n');
+  process.exit(1);
 }
 
-/* ============================================================
-   MIDDLEWARE
-   ============================================================ */
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const JWT_SECRET = process.env.JWT_SECRET;
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
+// Supabase client with service role (server-side only, never exposed)
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+/* ============================================================
+   SECURITY MIDDLEWARE
+   ============================================================ */
+
+// Helmet — security headers
+app.use(helmet({
+  contentSecurityPolicy: false, // Disabled to preserve existing frontend
+  crossOriginEmbedderPolicy: false,
+}));
+
+// Body parsing
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// CORS — production-safe
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = NODE_ENV === 'production' ? FRONTEND_URL : '*';
+  res.header('Access-Control-Allow-Origin', origin);
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH');
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
 
-// Uploads
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-app.use('/uploads', express.static(uploadsDir));
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadsDir),
-  filename: (req, file, cb) => cb(null, Date.now() + '-' + crypto.randomBytes(4).toString('hex') + path.extname(file.originalname))
-});
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
-
-// Static files
+// Static files (customer website)
 app.use(express.static(__dirname, { extensions: ['html'], index: 'index.html' }));
 
 /* ============================================================
-   AUTH
+   RATE LIMITING (simple in-memory)
    ============================================================ */
-function authMiddleware(req, res, next) {
+const rateLimits = {};
+
+function rateLimit(key, maxRequests, windowMs) {
+  const now = Date.now();
+  if (!rateLimits[key]) rateLimits[key] = [];
+  rateLimits[key] = rateLimits[key].filter(t => now - t < windowMs);
+  if (rateLimits[key].length >= maxRequests) {
+    return false;
+  }
+  rateLimits[key].push(now);
+  return true;
+}
+
+// Clean up old entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const key in rateLimits) {
+    rateLimits[key] = rateLimits[key].filter(t => now - t < 600000);
+    if (rateLimits[key].length === 0) delete rateLimits[key];
+  }
+}, 300000);
+
+/* ============================================================
+   INPUT SANITIZATION
+   ============================================================ */
+function sanitize(str, maxLen) {
+  if (typeof str !== 'string') return '';
+  return str.trim().substring(0, maxLen || 500).replace(/<[^>]*>/g, '');
+}
+
+function isValidPhone(phone) {
+  return /^\+?[0-9\s\-()]{7,30}$/.test(phone);
+}
+
+/* ============================================================
+   AUTH MIDDLEWARE
+   ============================================================ */
+async function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
   try {
-    req.admin = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    // Verify the user still exists and has admin role
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('id, email, full_name, role')
+      .eq('id', decoded.sub)
+      .single();
+
+    if (error || !profile || !['admin', 'staff'].includes(profile.role)) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    req.admin = profile;
     next();
   } catch (e) {
-    res.status(401).json({ error: 'Invalid token' });
+    if (e.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token expired' });
+    }
+    return res.status(401).json({ error: 'Invalid token' });
   }
 }
 
-app.post('/api/auth/login', (req, res) => {
+/* ============================================================
+   AUTH ROUTES
+   ============================================================ */
+app.post('/api/auth/login', async (req, res) => {
+  // Rate limit: 5 attempts per minute
+  const ip = req.ip || req.connection.remoteAddress;
+  if (!rateLimit(`login:${ip}`, 5, 60000)) {
+    return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
+  }
+
   const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
-  const admin = db.get('admins', a => a.email === email);
-  if (!admin || !bcrypt.compareSync(password, admin.password_hash)) return res.status(401).json({ error: 'Invalid email or password' });
-  const token = jwt.sign({ id: admin.id, email: admin.email, role: admin.role }, JWT_SECRET, { expiresIn: '7d' });
-  res.json({ token, user: { id: admin.id, email: admin.email, full_name: admin.full_name, role: admin.role } });
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+
+  try {
+    // Use Supabase Auth to sign in
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: sanitize(email, 254),
+      password: password
+    });
+
+    if (error) throw error;
+
+    // Check profile has admin role
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, email, full_name, role')
+      .eq('id', data.user.id)
+      .single();
+
+    if (profileError || !profile || !['admin', 'staff'].includes(profile.role)) {
+      await supabase.auth.admin.signOut(data.session.access_token);
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    // Create our own JWT for the server
+    const token = jwt.sign(
+      { sub: profile.id, email: profile.email, role: profile.role },
+      JWT_SECRET,
+      { expiresIn: '7d', issuer: 'bolivar-coffee' }
+    );
+
+    res.json({
+      token,
+      user: { id: profile.id, email: profile.email, full_name: profile.full_name, role: profile.role }
+    });
+  } catch (err) {
+    res.status(401).json({ error: 'Invalid email or password' });
+  }
 });
 
 app.get('/api/auth/me', authMiddleware, (req, res) => {
-  const admin = db.getById('admins', req.admin.id);
-  if (!admin) return res.status(404).json({ error: 'Not found' });
-  res.json({ id: admin.id, email: admin.email, full_name: admin.full_name, role: admin.role });
+  res.json(req.admin);
 });
 
-/* ============================================================
-   CATEGORIES
-   ============================================================ */
-app.get('/api/categories', (req, res) => {
-  res.json(db.sorted('menu_categories', 'sort_order', true).filter(c => c.is_active));
-});
-
-app.post('/api/categories', authMiddleware, (req, res) => {
-  const { name, slug, sort_order } = req.body;
-  if (!name || !slug) return res.status(400).json({ error: 'Name and slug required' });
-  const cat = db.insert('menu_categories', { name, slug, sort_order: sort_order || 0, is_active: true });
-  res.json(cat);
-});
-
-app.put('/api/categories/:id', authMiddleware, (req, res) => {
-  db.updateById('menu_categories', parseInt(req.params.id), req.body);
-  res.json({ success: true });
-});
-
-app.delete('/api/categories/:id', authMiddleware, (req, res) => {
-  db.deleteById('menu_categories', parseInt(req.params.id));
+app.post('/api/auth/logout', authMiddleware, (req, res) => {
   res.json({ success: true });
 });
 
 /* ============================================================
-   MENU ITEMS
+   PUBLIC API — Menu & Categories
    ============================================================ */
-app.get('/api/menu', (req, res) => {
-  const { category, featured, available } = req.query;
-  let items = db.sorted('menu_items', 'sort_order', true);
-  if (category) {
-    const cat = db.get('menu_categories', c => c.slug === category);
-    if (cat) items = items.filter(i => i.category_id === cat.id);
+app.get('/api/menu', async (req, res) => {
+  try {
+    const { category, featured } = req.query;
+    let query = supabase
+      .from('menu_items')
+      .select('*, menu_categories!inner(id, name, slug)')
+      .eq('is_available', true)
+      .order('display_order');
+
+    if (category) query = query.eq('menu_categories.slug', category);
+    if (featured === '1') query = query.eq('is_featured', true);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    // Flatten category info
+    const items = (data || []).map(item => ({
+      ...item,
+      category_name: item.menu_categories?.name || '',
+      category_slug: item.menu_categories?.slug || '',
+      menu_categories: undefined
+    }));
+
+    res.json(items);
+  } catch (err) {
+    console.error('Menu fetch error:', err.message);
+    res.status(500).json({ error: 'Failed to load menu' });
   }
-  if (featured === '1') items = items.filter(i => i.is_featured);
-  if (available === '1') items = items.filter(i => i.is_available);
-
-  // Attach category info
-  items = items.map(item => {
-    const cat = db.getById('menu_categories', item.category_id);
-    return { ...item, category_name: cat ? cat.name : '', category_slug: cat ? cat.slug : '' };
-  });
-  res.json(items);
 });
 
-app.get('/api/menu/:id', (req, res) => {
-  const item = db.getById('menu_items', parseInt(req.params.id));
-  if (!item) return res.status(404).json({ error: 'Not found' });
-  const cat = db.getById('menu_categories', item.category_id);
-  res.json({ ...item, category_name: cat ? cat.name : '', category_slug: cat ? cat.slug : '' });
-});
-
-app.post('/api/menu', authMiddleware, (req, res) => {
-  const { name, description, price, category_id, image_url, image_alt, is_available, is_featured, sort_order } = req.body;
-  if (!name || price === undefined || !category_id) return res.status(400).json({ error: 'Name, price, and category required' });
-  const item = db.insert('menu_items', {
-    name, description: description || '', price: parseFloat(price), category_id: parseInt(category_id),
-    image_url: image_url || '', image_alt: image_alt || '',
-    is_available: is_available !== false, is_featured: !!is_featured, sort_order: sort_order || 0
-  });
-  res.json(item);
-});
-
-app.put('/api/menu/:id', authMiddleware, (req, res) => {
-  const id = parseInt(req.params.id);
-  const updates = { ...req.body };
-  if (updates.price !== undefined) updates.price = parseFloat(updates.price);
-  if (updates.category_id !== undefined) updates.category_id = parseInt(updates.category_id);
-  db.updateById('menu_items', id, updates);
-  res.json({ success: true });
-});
-
-app.delete('/api/menu/:id', authMiddleware, (req, res) => {
-  db.deleteById('menu_items', parseInt(req.params.id));
-  res.json({ success: true });
+app.get('/api/categories', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('menu_categories')
+      .select('*')
+      .eq('is_active', true)
+      .order('display_order');
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load categories' });
+  }
 });
 
 /* ============================================================
-   ORDERS
+   PUBLIC API — Reviews (approved only)
    ============================================================ */
-app.get('/api/orders', authMiddleware, (req, res) => {
-  const { status, search } = req.query;
-  let orders = db.sorted('orders', 'created_at', false);
-  if (status && status !== 'all') orders = orders.filter(o => o.status === status);
-  if (search) {
-    const q = search.toLowerCase();
-    orders = orders.filter(o =>
-      (o.customer_name || '').toLowerCase().includes(q) ||
-      String(o.order_number).includes(q) ||
-      (o.customer_phone || '').includes(q)
-    );
+app.get('/api/reviews', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('*')
+      .eq('is_approved', true)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load reviews' });
   }
-  orders = orders.map(o => ({ ...o, order_items: db.all('order_items', i => i.order_id === o.id) }));
-  res.json(orders);
 });
 
-app.get('/api/orders/:id', (req, res) => {
-  const order = db.getById('orders', parseInt(req.params.id));
-  if (!order) return res.status(404).json({ error: 'Not found' });
-  order.order_items = db.all('order_items', i => i.order_id === order.id);
-  res.json(order);
+app.post('/api/reviews', async (req, res) => {
+  // Rate limit: 3 reviews per hour per IP
+  const ip = req.ip || req.connection.remoteAddress;
+  if (!rateLimit(`review:${ip}`, 3, 3600000)) {
+    return res.status(429).json({ error: 'Too many reviews. Please try again later.' });
+  }
+
+  try {
+    const { customer_name, rating, content } = req.body;
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Review content is required' });
+    }
+
+    const { data, error } = await supabase
+      .from('reviews')
+      .insert({
+        customer_name: sanitize(customer_name || 'Guest', 100),
+        rating: Math.min(5, Math.max(1, parseInt(rating) || 5)),
+        content: sanitize(content, 1000),
+        source: 'website',
+        is_approved: false
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to submit review' });
+  }
 });
 
-app.post('/api/orders', (req, res) => {
-  const { customer_name, customer_phone, notes, items } = req.body;
-  if (!customer_name || !customer_phone || !items || !items.length) return res.status(400).json({ error: 'Name, phone, and items required' });
-  let total = 0;
-  items.forEach(i => { total += i.price * i.quantity; });
-  const order = db.insert('orders', {
-    order_number: db.nextOrderNumber(),
-    customer_name, customer_phone, notes: notes || '',
-    status: 'new', total: parseFloat(total.toFixed(3))
-  });
-  items.forEach(item => {
-    db.insert('order_items', {
-      order_id: order.id, menu_item_id: item.id, menu_item_name: item.name,
-      quantity: item.quantity, unit_price: item.price, subtotal: parseFloat((item.price * item.quantity).toFixed(3))
+/* ============================================================
+   PUBLIC API — Gallery
+   ============================================================ */
+app.get('/api/gallery', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('gallery_images')
+      .select('*')
+      .eq('is_active', true)
+      .order('display_order');
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load gallery' });
+  }
+});
+
+/* ============================================================
+   PUBLIC API — Settings
+   ============================================================ */
+app.get('/api/settings', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('business_settings')
+      .select('*');
+    if (error) throw error;
+    const settings = {};
+    (data || []).forEach(r => { settings[r.key] = r.value; });
+    res.json(settings);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load settings' });
+  }
+});
+
+/* ============================================================
+   PUBLIC API — Create Order (SECURE: prices from database)
+   ============================================================ */
+app.post('/api/orders', async (req, res) => {
+  // Rate limit: 10 orders per hour per IP
+  const ip = req.ip || req.connection.remoteAddress;
+  if (!rateLimit(`order:${ip}`, 10, 3600000)) {
+    return res.status(429).json({ error: 'Too many orders. Please try again later.' });
+  }
+
+  try {
+    const { customer_name, customer_phone, customer_notes, items } = req.body;
+
+    // Validate required fields
+    if (!customer_name || !customer_name.trim()) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+    if (!customer_phone || !customer_phone.trim()) {
+      return res.status(400).json({ error: 'Phone number is required' });
+    }
+    if (!isValidPhone(customer_phone)) {
+      return res.status(400).json({ error: 'Invalid phone number format' });
+    }
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'At least one item is required' });
+    }
+    if (items.length > 50) {
+      return res.status(400).json({ error: 'Too many items' });
+    }
+
+    // Validate each item
+    for (const item of items) {
+      if (!item.menu_item_id || !item.quantity) {
+        return res.status(400).json({ error: 'Each item must have a menu_item_id and quantity' });
+      }
+      const qty = parseInt(item.quantity);
+      if (isNaN(qty) || qty < 1 || qty > 100) {
+        return res.status(400).json({ error: 'Invalid quantity' });
+      }
+    }
+
+    // Fetch all referenced menu items from database (DO NOT TRUST CLIENT PRICES)
+    const itemIds = [...new Set(items.map(i => i.menu_item_id))];
+    const { data: menuItems, error: menuError } = await supabase
+      .from('menu_items')
+      .select('id, name, price, is_available')
+      .in('id', itemIds);
+
+    if (menuError) throw menuError;
+
+    // Verify all items exist and are available
+    const menuItemMap = {};
+    (menuItems || []).forEach(mi => { menuItemMap[mi.id] = mi; });
+
+    for (const item of items) {
+      const menuItem = menuItemMap[item.menu_item_id];
+      if (!menuItem) {
+        return res.status(400).json({ error: `Menu item not found: ${item.menu_item_id}` });
+      }
+      if (!menuItem.is_available) {
+        return res.status(400).json({ error: `"${menuItem.name}" is currently unavailable` });
+      }
+    }
+
+    // Calculate totals using DATABASE prices
+    let subtotal = 0;
+    const orderItems = items.map(item => {
+      const menuItem = menuItemMap[item.menu_item_id];
+      const quantity = parseInt(item.quantity);
+      const unitPrice = parseFloat(menuItem.price);
+      const itemSubtotal = parseFloat((unitPrice * quantity).toFixed(3));
+      subtotal += itemSubtotal;
+      return {
+        menu_item_id: item.menu_item_id,
+        item_name_snapshot: menuItem.name,
+        unit_price: unitPrice,
+        quantity,
+        subtotal: itemSubtotal
+      };
     });
-  });
-  db.insert('notifications', {
-    type: 'order', title: `New Order #${order.order_number}`,
-    message: `${customer_name} placed an order — ${total.toFixed(3)} DT`,
-    reference_id: order.id, is_read: false
-  });
-  res.json({ id: order.id, order_number: order.order_number, total: order.total });
-});
 
-app.patch('/api/orders/:id', authMiddleware, (req, res) => {
-  const { status } = req.body;
-  if (!status) return res.status(400).json({ error: 'Status required' });
-  db.updateById('orders', parseInt(req.params.id), { status });
-  res.json({ success: true });
-});
+    const total = parseFloat(subtotal.toFixed(3));
 
-/* ============================================================
-   REVIEWS
-   ============================================================ */
-app.get('/api/reviews', (req, res) => {
-  res.json(db.sorted('reviews', 'created_at', false));
-});
+    // Create order
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .insert({
+        customer_name: sanitize(customer_name, 100),
+        customer_phone: sanitize(customer_phone, 30),
+        customer_notes: sanitize(customer_notes || '', 500),
+        subtotal,
+        total,
+        status: 'new'
+      })
+      .select('id, tracking_token, order_number, total, status, created_at')
+      .single();
 
-app.get('/api/reviews/approved', (req, res) => {
-  res.json(db.all('reviews', r => r.is_approved).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
-});
+    if (orderError) throw orderError;
 
-app.post('/api/reviews', (req, res) => {
-  const { author_name, rating, content } = req.body;
-  if (!content) return res.status(400).json({ error: 'Content required' });
-  const review = db.insert('reviews', { author_name: author_name || 'Guest', rating: rating || 5, content, source: 'website', is_approved: false });
-  res.json(review);
-});
+    // Create order items
+    const orderItemsToInsert = orderItems.map(oi => ({
+      order_id: order.id,
+      ...oi
+    }));
 
-app.put('/api/reviews/:id', authMiddleware, (req, res) => {
-  db.updateById('reviews', parseInt(req.params.id), req.body);
-  res.json({ success: true });
-});
+    const { error: itemsError } = await supabase
+      .from('order_items')
+      .insert(orderItemsToInsert);
 
-app.delete('/api/reviews/:id', authMiddleware, (req, res) => {
-  db.deleteById('reviews', parseInt(req.params.id));
-  res.json({ success: true });
-});
+    if (itemsError) throw itemsError;
 
-/* ============================================================
-   GALLERY
-   ============================================================ */
-app.get('/api/gallery', (req, res) => {
-  res.json(db.sorted('gallery_images', 'sort_order', true));
-});
-
-app.post('/api/gallery', authMiddleware, (req, res) => {
-  const { url, alt, caption, sort_order } = req.body;
-  if (!url) return res.status(400).json({ error: 'URL required' });
-  const img = db.insert('gallery_images', { url, alt: alt || '', caption: caption || '', sort_order: sort_order || 0 });
-  res.json(img);
-});
-
-app.delete('/api/gallery/:id', authMiddleware, (req, res) => {
-  db.deleteById('gallery_images', parseInt(req.params.id));
-  res.json({ success: true });
+    res.json({
+      id: order.id,
+      tracking_token: order.tracking_token,
+      total: order.total,
+      status: order.status,
+      created_at: order.created_at
+    });
+  } catch (err) {
+    console.error('Order creation error:', err.message);
+    res.status(500).json({ error: 'Failed to create order. Please try again.' });
+  }
 });
 
 /* ============================================================
-   SETTINGS
+   PUBLIC API — Track Order by Token
    ============================================================ */
-app.get('/api/settings', (req, res) => {
-  const settings = {};
-  db.all('business_settings').forEach(r => { settings[r.key] = r.value; });
-  res.json(settings);
-});
+app.get('/api/orders/track/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    if (!token || token.length < 20) {
+      return res.status(400).json({ error: 'Invalid tracking token' });
+    }
 
-app.put('/api/settings', authMiddleware, (req, res) => {
-  Object.entries(req.body).forEach(([k, v]) => db.upsert('business_settings', { key: k, value: v || '' }, 'key'));
-  res.json({ success: true });
+    const { data: order, error } = await supabase
+      .from('orders')
+      .select('id, tracking_token, customer_name, status, total, created_at, updated_at')
+      .eq('tracking_token', token)
+      .single();
+
+    if (error || !order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // Fetch order items
+    const { data: items } = await supabase
+      .from('order_items')
+      .select('item_name_snapshot, unit_price, quantity, subtotal')
+      .eq('order_id', order.id);
+
+    res.json({
+      ...order,
+      items: items || []
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to track order' });
+  }
 });
 
 /* ============================================================
-   NOTIFICATIONS
+   ADMIN API — Dashboard Stats
    ============================================================ */
-app.get('/api/notifications', authMiddleware, (req, res) => {
-  res.json(db.all('notifications', n => !n.is_read).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 50));
-});
+app.get('/api/admin/dashboard', authMiddleware, async (req, res) => {
+  try {
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
 
-app.put('/api/notifications/read-all', authMiddleware, (req, res) => {
-  db.update('notifications', { is_read: true }, () => true);
-  res.json({ success: true });
+    const [ordersResult, menuResult, todayResult] = await Promise.all([
+      supabase.from('orders').select('id, status, total, created_at'),
+      supabase.from('menu_items').select('id', { count: 'exact', head: true }),
+      supabase.from('orders').select('id, total').gte('created_at', today + 'T00:00:00')
+    ]);
+
+    const orders = ordersResult.data || [];
+    const stats = {
+      total_orders: orders.length,
+      pending_count: orders.filter(o => o.status === 'new').length,
+      completed_count: orders.filter(o => o.status === 'completed').length,
+      menu_item_count: menuResult.count || 0,
+      total_revenue: orders.reduce((s, o) => s + (o.total || 0), 0),
+      today_revenue: (todayResult.data || []).reduce((s, o) => s + (o.total || 0), 0),
+      today_orders: (todayResult.data || []).length,
+    };
+
+    // Recent orders
+    stats.recent_orders = orders
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 10);
+
+    // Attach items to recent orders
+    for (const o of stats.recent_orders) {
+      const { data: items } = await supabase
+        .from('order_items')
+        .select('item_name_snapshot, quantity, subtotal')
+        .eq('order_id', o.id);
+      o.order_items = items || [];
+    }
+
+    // Best sellers
+    const { data: allItems } = await supabase.from('order_items').select('item_name_snapshot, quantity, subtotal');
+    const soldMap = {};
+    (allItems || []).forEach(i => {
+      if (!soldMap[i.item_name_snapshot]) soldMap[i.item_name_snapshot] = { menu_item_name: i.item_name_snapshot, times_ordered: 0, revenue: 0 };
+      soldMap[i.item_name_snapshot].times_ordered += i.quantity;
+      soldMap[i.item_name_snapshot].revenue += i.subtotal;
+    });
+    stats.best_sellers = Object.values(soldMap).sort((a, b) => b.times_ordered - a.times_ordered).slice(0, 5);
+
+    // Daily revenue
+    const { data: recentOrders } = await supabase
+      .from('orders')
+      .select('total, created_at')
+      .gte('created_at', new Date(now - 30 * 86400000).toISOString());
+    const revenueByDay = {};
+    (recentOrders || []).forEach(o => {
+      const day = (o.created_at || '').split('T')[0];
+      if (!revenueByDay[day]) revenueByDay[day] = { day, orders: 0, revenue: 0 };
+      revenueByDay[day].orders++;
+      revenueByDay[day].revenue += o.total || 0;
+    });
+    stats.daily_revenue = Object.values(revenueByDay).sort((a, b) => b.day.localeCompare(a.day)).slice(0, 30);
+
+    res.json(stats);
+  } catch (err) {
+    console.error('Dashboard error:', err.message);
+    res.status(500).json({ error: 'Failed to load dashboard' });
+  }
 });
 
 /* ============================================================
-   FILE UPLOAD
+   ADMIN API — Orders Management
    ============================================================ */
-app.post('/api/upload', authMiddleware, upload.single('image'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file' });
-  res.json({ url: '/uploads/' + req.file.filename });
+app.get('/api/admin/orders', authMiddleware, async (req, res) => {
+  try {
+    const { status, search } = req.query;
+    let query = supabase.from('orders').select('*').order('created_at', { ascending: false });
+    if (status && status !== 'all') query = query.eq('status', status);
+
+    const { data: orders, error } = await query;
+    if (error) throw error;
+
+    // Search filter (post-fetch since Supabase doesn't do LIKE on all fields well)
+    let filtered = orders || [];
+    if (search) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(o =>
+        (o.customer_name || '').toLowerCase().includes(q) ||
+        (o.customer_phone || '').includes(q) ||
+        (o.tracking_token || '').includes(q)
+      );
+    }
+
+    // Attach items
+    for (const o of filtered) {
+      const { data: items } = await supabase
+        .from('order_items')
+        .select('*')
+        .eq('order_id', o.id);
+      o.order_items = items || [];
+    }
+
+    res.json(filtered);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load orders' });
+  }
+});
+
+app.get('/api/admin/orders/:id', authMiddleware, async (req, res) => {
+  try {
+    const { data: order, error } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+    if (error || !order) return res.status(404).json({ error: 'Order not found' });
+
+    const { data: items } = await supabase
+      .from('order_items')
+      .select('*')
+      .eq('order_id', order.id);
+    order.order_items = items || [];
+
+    res.json(order);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load order' });
+  }
+});
+
+app.patch('/api/admin/orders/:id', authMiddleware, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const validStatuses = ['new', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled'];
+    if (!status || !validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    const { error } = await supabase
+      .from('orders')
+      .update({ status })
+      .eq('id', req.params.id);
+    if (error) throw error;
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update order' });
+  }
 });
 
 /* ============================================================
-   DASHBOARD
+   ADMIN API — Menu Management
    ============================================================ */
-app.get('/api/dashboard', authMiddleware, (req, res) => {
-  const now = new Date();
-  const today = now.toISOString().split('T')[0];
-  const weekAgo = new Date(now - 7 * 86400000).toISOString();
-  const monthAgo = new Date(now - 30 * 86400000).toISOString();
+app.get('/api/admin/menu', authMiddleware, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('menu_items')
+      .select('*, menu_categories!inner(id, name, slug)')
+      .order('display_order');
+    if (error) throw error;
+    const items = (data || []).map(item => ({
+      ...item,
+      category_name: item.menu_categories?.name || '',
+      category_slug: item.menu_categories?.slug || '',
+      menu_categories: undefined
+    }));
+    res.json(items);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load menu' });
+  }
+});
 
-  const stats = {
-    total_orders: db.count('orders'),
-    pending_count: db.count('orders', o => o.status === 'new'),
-    completed_count: db.count('orders', o => o.status === 'completed'),
-    menu_item_count: db.count('menu_items'),
-    total_revenue: db.sum('orders', 'total'),
-    today_revenue: db.sum('orders', 'total', o => o.created_at && o.created_at.startsWith(today)),
-    today_orders: db.count('orders', o => o.created_at && o.created_at.startsWith(today)),
-    week_revenue: db.sum('orders', 'total', o => o.created_at >= weekAgo),
-    month_revenue: db.sum('orders', 'total', o => o.created_at >= monthAgo),
-  };
+app.post('/api/admin/menu', authMiddleware, async (req, res) => {
+  try {
+    const { name, description, price, category_id, image_url, is_available, is_featured, display_order } = req.body;
+    if (!name || price === undefined || !category_id) {
+      return res.status(400).json({ error: 'Name, price, and category are required' });
+    }
+    const { data, error } = await supabase
+      .from('menu_items')
+      .insert({
+        name: sanitize(name, 200),
+        description: sanitize(description || '', 500),
+        price: Math.max(0, parseFloat(price) || 0),
+        category_id,
+        image_url: image_url || '',
+        is_available: is_available !== false,
+        is_featured: !!is_featured,
+        display_order: parseInt(display_order) || 0
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create menu item' });
+  }
+});
 
-  // Daily revenue
-  const revenueByDay = {};
-  db.all('orders', o => o.created_at >= monthAgo).forEach(o => {
-    const day = (o.created_at || '').split('T')[0];
-    if (!revenueByDay[day]) revenueByDay[day] = { day, orders: 0, revenue: 0 };
-    revenueByDay[day].orders++;
-    revenueByDay[day].revenue += o.total || 0;
-  });
-  stats.daily_revenue = Object.values(revenueByDay).sort((a, b) => b.day.localeCompare(a.day)).slice(0, 30);
+app.patch('/api/admin/menu/:id', authMiddleware, async (req, res) => {
+  try {
+    const updates = { ...req.body };
+    if (updates.price !== undefined) updates.price = Math.max(0, parseFloat(updates.price) || 0);
+    if (updates.name) updates.name = sanitize(updates.name, 200);
+    if (updates.description) updates.description = sanitize(updates.description, 500);
+    delete updates.id;
+    delete updates.created_at;
 
-  // Recent orders
-  stats.recent_orders = db.sorted('orders', 'created_at', false).slice(0, 10).map(o => ({
-    ...o, order_items: db.all('order_items', i => i.order_id === o.id)
-  }));
+    const { error } = await supabase
+      .from('menu_items')
+      .update(updates)
+      .eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update menu item' });
+  }
+});
 
-  // Best sellers
-  const soldMap = {};
-  db.all('order_items').forEach(i => {
-    if (!soldMap[i.menu_item_name]) soldMap[i.menu_item_name] = { menu_item_name: i.menu_item_name, times_ordered: 0, revenue: 0 };
-    soldMap[i.menu_item_name].times_ordered += i.quantity;
-    soldMap[i.menu_item_name].revenue += i.subtotal;
-  });
-  stats.best_sellers = Object.values(soldMap).sort((a, b) => b.times_ordered - a.times_ordered).slice(0, 5);
-
-  res.json(stats);
+app.delete('/api/admin/menu/:id', authMiddleware, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('menu_items')
+      .delete()
+      .eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete menu item' });
+  }
 });
 
 /* ============================================================
-   START
+   ADMIN API — Reviews Management
    ============================================================ */
-seedIfEmpty();
+app.get('/api/admin/reviews', authMiddleware, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load reviews' });
+  }
+});
+
+app.patch('/api/admin/reviews/:id', authMiddleware, async (req, res) => {
+  try {
+    const updates = {};
+    if (req.body.is_approved !== undefined) updates.is_approved = !!req.body.is_approved;
+    if (req.body.is_featured !== undefined) updates.is_featured = !!req.body.is_featured;
+    const { error } = await supabase
+      .from('reviews')
+      .update(updates)
+      .eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update review' });
+  }
+});
+
+app.delete('/api/admin/reviews/:id', authMiddleware, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('reviews')
+      .delete()
+      .eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete review' });
+  }
+});
+
+/* ============================================================
+   ADMIN API — Gallery Management
+   ============================================================ */
+app.get('/api/admin/gallery', authMiddleware, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('gallery_images')
+      .select('*')
+      .order('display_order');
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load gallery' });
+  }
+});
+
+app.post('/api/admin/gallery', authMiddleware, async (req, res) => {
+  try {
+    const { title, image_url, caption, display_order } = req.body;
+    if (!image_url) return res.status(400).json({ error: 'Image URL is required' });
+    const { data, error } = await supabase
+      .from('gallery_images')
+      .insert({
+        title: sanitize(title || '', 200),
+        image_url,
+        caption: sanitize(caption || '', 200),
+        display_order: parseInt(display_order) || 0,
+        is_active: true
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to add gallery image' });
+  }
+});
+
+app.patch('/api/admin/gallery/:id', authMiddleware, async (req, res) => {
+  try {
+    const updates = { ...req.body };
+    delete updates.id;
+    const { error } = await supabase
+      .from('gallery_images')
+      .update(updates)
+      .eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update gallery image' });
+  }
+});
+
+app.delete('/api/admin/gallery/:id', authMiddleware, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('gallery_images')
+      .delete()
+      .eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete gallery image' });
+  }
+});
+
+/* ============================================================
+   ADMIN API — Settings
+   ============================================================ */
+app.get('/api/admin/settings', authMiddleware, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('business_settings')
+      .select('*');
+    if (error) throw error;
+    const settings = {};
+    (data || []).forEach(r => { settings[r.key] = r.value; });
+    res.json(settings);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load settings' });
+  }
+});
+
+app.patch('/api/admin/settings', authMiddleware, async (req, res) => {
+  try {
+    const entries = Object.entries(req.body);
+    for (const [key, value] of entries) {
+      await supabase
+        .from('business_settings')
+        .upsert({ key, value: value || '', updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save settings' });
+  }
+});
+
+/* ============================================================
+   ADMIN API — Categories
+   ============================================================ */
+app.get('/api/admin/categories', authMiddleware, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('menu_categories')
+      .select('*')
+      .order('display_order');
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load categories' });
+  }
+});
+
+/* ============================================================
+   ADMIN API — File Upload (to Supabase Storage)
+   ============================================================ */
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only JPEG, PNG, and WebP images are allowed'));
+    }
+  }
+});
+
+app.post('/api/admin/upload', authMiddleware, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    const ext = req.file.originalname.split('.').pop() || 'jpg';
+    const filename = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}.${ext}`;
+    const bucket = req.body.bucket || 'menu-images';
+
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .upload(filename, req.file.buffer, {
+        contentType: req.file.mimetype,
+        upsert: false
+      });
+
+    if (error) throw error;
+
+    const { data: urlData } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(filename);
+
+    res.json({ url: urlData.publicUrl, path: data.path });
+  } catch (err) {
+    console.error('Upload error:', err.message);
+    res.status(500).json({ error: 'Failed to upload file' });
+  }
+});
+
+/* ============================================================
+   SPA FALLBACK
+   ============================================================ */
+app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'admin', 'index.html')));
+app.get('/admin/', (req, res) => res.sendFile(path.join(__dirname, 'admin', 'index.html')));
+app.get('/order', (req, res) => res.sendFile(path.join(__dirname, 'order.html')));
+
+/* ============================================================
+   ERROR HANDLING
+   ============================================================ */
+app.use((err, req, res, next) => {
+  console.error('Server error:', err.message);
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'File too large' });
+  }
+  res.status(500).json({ error: 'Something went wrong. Please try again.' });
+});
+
+/* ============================================================
+   START SERVER
+   ============================================================ */
 app.listen(PORT, () => {
   console.log(`\n☕ Bolivar Coffee server running at http://localhost:${PORT}`);
   console.log(`   Customer site:   http://localhost:${PORT}/`);
   console.log(`   Admin login:     http://localhost:${PORT}/admin/login.html`);
   console.log(`   Admin dashboard: http://localhost:${PORT}/admin/index.html`);
-  console.log(`\n   Default login:   admin@bolivar.coffee / admin123\n`);
+  console.log(`\n   Environment: ${NODE_ENV}`);
+  console.log(`   Supabase: ${SUPABASE_URL}\n`);
 });
