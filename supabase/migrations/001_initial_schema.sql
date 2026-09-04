@@ -222,25 +222,23 @@ CREATE POLICY "Admins can update items" ON public.menu_items
 CREATE POLICY "Admins can delete items" ON public.menu_items
   FOR DELETE USING (public.is_admin());
 
--- ORDERS (public can create, admin manage, tracking token for customer lookup)
+-- ORDERS (public can create, admin manage all, no public read)
+-- Customer tracking is handled server-side via service role key
 CREATE POLICY "Anyone can create orders" ON public.orders
   FOR INSERT WITH CHECK (true);
 CREATE POLICY "Admins can view all orders" ON public.orders
   FOR SELECT USING (public.is_admin());
-CREATE POLICY "Anyone can view order by tracking token" ON public.orders
-  FOR SELECT USING (true);
 CREATE POLICY "Admins can update orders" ON public.orders
   FOR UPDATE USING (public.is_admin());
 CREATE POLICY "Admins can delete orders" ON public.orders
   FOR DELETE USING (public.is_admin());
 
--- ORDER ITEMS (public can create with order, admin view)
+-- ORDER ITEMS (public can create with order, admin view all)
+-- Customer tracking is handled server-side via service role key
 CREATE POLICY "Anyone can insert order items" ON public.order_items
   FOR INSERT WITH CHECK (true);
 CREATE POLICY "Admins can view order items" ON public.order_items
   FOR SELECT USING (public.is_admin());
-CREATE POLICY "Public can view items for tracked orders" ON public.order_items
-  FOR SELECT USING (true);
 
 -- REVIEWS (public read approved, anyone can submit, admin manage)
 CREATE POLICY "Public can view approved reviews" ON public.reviews
