@@ -42,10 +42,6 @@
   api.getGalleryImages = function () { return apiFetch('/api/gallery'); };
   api.getSettings = function () { return apiFetch('/api/settings'); };
 
-  // Orders
-  api.createOrder = function (orderData) { return apiFetch('/api/orders', { method: 'POST', body: orderData }); };
-  api.trackOrder = function (token) { return apiFetch('/api/orders/track/' + token); };
-
   // Admin API
   api.admin = {
     login: function (email, password) {
@@ -53,20 +49,6 @@
     },
     me: function () { return apiFetch('/api/auth/me'); },
     dashboard: function () { return apiFetch('/api/admin/dashboard'); },
-    getOrders: function (params) {
-      var url = '/api/admin/orders';
-      if (params) {
-        var qs = [];
-        if (params.status) qs.push('status=' + params.status);
-        if (params.search) qs.push('search=' + encodeURIComponent(params.search));
-        if (qs.length) url += '?' + qs.join('&');
-      }
-      return apiFetch(url);
-    },
-    getOrder: function (id) { return apiFetch('/api/admin/orders/' + id); },
-    updateOrderStatus: function (id, status) {
-      return apiFetch('/api/admin/orders/' + id, { method: 'PATCH', body: { status: status } });
-    },
     getMenu: function () { return apiFetch('/api/admin/menu'); },
     createMenuItem: function (item) { return apiFetch('/api/admin/menu', { method: 'POST', body: item }); },
     updateMenuItem: function (id, updates) { return apiFetch('/api/admin/menu/' + id, { method: 'PATCH', body: updates }); },

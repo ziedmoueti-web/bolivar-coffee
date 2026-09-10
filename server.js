@@ -326,310 +326,34 @@ app.get('/api/settings', async (req, res) => {
 });
 
 /* ============================================================
-   PUBLIC API — Create Order (SECURE: prices from database)
-   ============================================================ */
-app.post('/api/orders', async (req, res) => {
-  // Rate limit: 10 orders per hour per IP
-  const ip = req.ip || req.connection.remoteAddress;
-  if (!rateLimit(`order:${ip}`, 10, 3600000)) {
-    return res.status(429).json({ error: 'Too many orders. Please try again later.' });
-  }
-
-  try {
-    const { customer_name, customer_phone, customer_notes, items } = req.body;
-
-    // Validate required fields
-    if (!customer_name || !customer_name.trim()) {
-      return res.status(400).json({ error: 'Name is required' });
-    }
-    if (!customer_phone || !customer_phone.trim()) {
-      return res.status(400).json({ error: 'Phone number is required' });
-    }
-    if (!isValidPhone(customer_phone)) {
-      return res.status(400).json({ error: 'Invalid phone number format' });
-    }
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'At least one item is required' });
-    }
-    if (items.length > 50) {
-      return res.status(400).json({ error: 'Too many items' });
-    }
-
-    // Validate each item
-    for (const item of items) {
-      if (!item.menu_item_id || !item.quantity) {
-        return res.status(400).json({ error: 'Each item must have a menu_item_id and quantity' });
-      }
-      const qty = parseInt(item.quantity);
-      if (isNaN(qty) || qty < 1 || qty > 100) {
-        return res.status(400).json({ error: 'Invalid quantity' });
-      }
-    }
-
-    // Fetch all referenced menu items from database (DO NOT TRUST CLIENT PRICES)
-    const itemIds = [...new Set(items.map(i => i.menu_item_id))];
-    const { data: menuItems, error: menuError } = await supabase
-      .from('menu_items')
-      .select('id, name, price, is_available')
-      .in('id', itemIds);
-
-    if (menuError) throw menuError;
-
-    // Verify all items exist and are available
-    const menuItemMap = {};
-    (menuItems || []).forEach(mi => { menuItemMap[mi.id] = mi; });
-
-    for (const item of items) {
-      const menuItem = menuItemMap[item.menu_item_id];
-      if (!menuItem) {
-        return res.status(400).json({ error: `Menu item not found: ${item.menu_item_id}` });
-      }
-      if (!menuItem.is_available) {
-        return res.status(400).json({ error: `"${menuItem.name}" is currently unavailable` });
-      }
-    }
-
-    // Calculate totals using DATABASE prices
-    let subtotal = 0;
-    const orderItems = items.map(item => {
-      const menuItem = menuItemMap[item.menu_item_id];
-      const quantity = parseInt(item.quantity);
-      const unitPrice = parseFloat(menuItem.price);
-      const itemSubtotal = parseFloat((unitPrice * quantity).toFixed(3));
-      subtotal += itemSubtotal;
-      return {
-        menu_item_id: item.menu_item_id,
-        item_name_snapshot: menuItem.name,
-        unit_price: unitPrice,
-        quantity,
-        subtotal: itemSubtotal
-      };
-    });
-
-    const total = parseFloat(subtotal.toFixed(3));
-
-    // Create order
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .insert({
-        customer_name: sanitize(customer_name, 100),
-        customer_phone: sanitize(customer_phone, 30),
-        customer_notes: sanitize(customer_notes || '', 500),
-        subtotal,
-        total,
-        status: 'new'
-      })
-      .select('id, tracking_token, total, status, created_at')
-      .single();
-
-    if (orderError) throw orderError;
-
-    // Create order items
-    const orderItemsToInsert = orderItems.map(oi => ({
-      order_id: order.id,
-      ...oi
-    }));
-
-    const { error: itemsError } = await supabase
-      .from('order_items')
-      .insert(orderItemsToInsert);
-
-    if (itemsError) throw itemsError;
-
-    res.json({
-      id: order.id,
-      tracking_token: order.tracking_token,
-      total: order.total,
-      status: order.status,
-      created_at: order.created_at
-    });
-  } catch (err) {
-    console.error('Order creation error:', err.message);
-    res.status(500).json({ error: 'Failed to create order. Please try again.' });
-  }
-});
-
-/* ============================================================
-   PUBLIC API — Track Order by Token
-   ============================================================ */
-app.get('/api/orders/track/:token', async (req, res) => {
-  try {
-    const { token } = req.params;
-    if (!token || token.length < 20) {
-      return res.status(400).json({ error: 'Invalid tracking token' });
-    }
-
-    const { data: order, error } = await supabase
-      .from('orders')
-      .select('id, tracking_token, customer_name, status, total, created_at, updated_at')
-      .eq('tracking_token', token)
-      .single();
-
-    if (error || !order) {
-      return res.status(404).json({ error: 'Order not found' });
-    }
-
-    // Fetch order items
-    const { data: items } = await supabase
-      .from('order_items')
-      .select('item_name_snapshot, unit_price, quantity, subtotal')
-      .eq('order_id', order.id);
-
-    res.json({
-      ...order,
-      items: items || []
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to track order' });
-  }
-});
-
-/* ============================================================
    ADMIN API — Dashboard Stats
    ============================================================ */
 app.get('/api/admin/dashboard', authMiddleware, async (req, res) => {
   try {
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-
-    const [ordersResult, menuResult, todayResult] = await Promise.all([
-      supabase.from('orders').select('id, status, total, created_at'),
-      supabase.from('menu_items').select('id', { count: 'exact', head: true }),
-      supabase.from('orders').select('id, total').gte('created_at', today + 'T00:00:00')
+    const [menuResult, categoriesResult, reviewsResult, galleryResult] = await Promise.all([
+      supabase.from('menu_items').select('id, is_available', { count: 'exact' }),
+      supabase.from('menu_categories').select('id, is_active', { count: 'exact' }),
+      supabase.from('reviews').select('id, is_approved', { count: 'exact' }),
+      supabase.from('gallery_images').select('id', { count: 'exact', head: true })
     ]);
 
-    const orders = ordersResult.data || [];
+    const menuItems = menuResult.data || [];
+    const reviews = reviewsResult.data || [];
+
     const stats = {
-      total_orders: orders.length,
-      pending_count: orders.filter(o => o.status === 'new').length,
-      completed_count: orders.filter(o => o.status === 'completed').length,
       menu_item_count: menuResult.count || 0,
-      total_revenue: orders.reduce((s, o) => s + (o.total || 0), 0),
-      today_revenue: (todayResult.data || []).reduce((s, o) => s + (o.total || 0), 0),
-      today_orders: (todayResult.data || []).length,
+      available_item_count: menuItems.filter(i => i.is_available).length,
+      category_count: categoriesResult.count || 0,
+      review_count: reviewsResult.count || 0,
+      approved_review_count: reviews.filter(r => r.is_approved).length,
+      pending_review_count: reviews.filter(r => !r.is_approved).length,
+      gallery_count: galleryResult.count || 0
     };
-
-    // Recent orders
-    stats.recent_orders = orders
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-      .slice(0, 10);
-
-    // Attach items to recent orders
-    for (const o of stats.recent_orders) {
-      const { data: items } = await supabase
-        .from('order_items')
-        .select('item_name_snapshot, quantity, subtotal')
-        .eq('order_id', o.id);
-      o.order_items = items || [];
-    }
-
-    // Best sellers
-    const { data: allItems } = await supabase.from('order_items').select('item_name_snapshot, quantity, subtotal');
-    const soldMap = {};
-    (allItems || []).forEach(i => {
-      if (!soldMap[i.item_name_snapshot]) soldMap[i.item_name_snapshot] = { menu_item_name: i.item_name_snapshot, times_ordered: 0, revenue: 0 };
-      soldMap[i.item_name_snapshot].times_ordered += i.quantity;
-      soldMap[i.item_name_snapshot].revenue += i.subtotal;
-    });
-    stats.best_sellers = Object.values(soldMap).sort((a, b) => b.times_ordered - a.times_ordered).slice(0, 5);
-
-    // Daily revenue
-    const { data: recentOrders } = await supabase
-      .from('orders')
-      .select('total, created_at')
-      .gte('created_at', new Date(now - 30 * 86400000).toISOString());
-    const revenueByDay = {};
-    (recentOrders || []).forEach(o => {
-      const day = (o.created_at || '').split('T')[0];
-      if (!revenueByDay[day]) revenueByDay[day] = { day, orders: 0, revenue: 0 };
-      revenueByDay[day].orders++;
-      revenueByDay[day].revenue += o.total || 0;
-    });
-    stats.daily_revenue = Object.values(revenueByDay).sort((a, b) => b.day.localeCompare(a.day)).slice(0, 30);
 
     res.json(stats);
   } catch (err) {
     console.error('Dashboard error:', err.message);
     res.status(500).json({ error: 'Failed to load dashboard' });
-  }
-});
-
-/* ============================================================
-   ADMIN API — Orders Management
-   ============================================================ */
-app.get('/api/admin/orders', authMiddleware, async (req, res) => {
-  try {
-    const { status, search } = req.query;
-    let query = supabase.from('orders').select('*').order('created_at', { ascending: false });
-    if (status && status !== 'all') query = query.eq('status', status);
-
-    const { data: orders, error } = await query;
-    if (error) throw error;
-
-    // Search filter (post-fetch since Supabase doesn't do LIKE on all fields well)
-    let filtered = orders || [];
-    if (search) {
-      const q = search.toLowerCase();
-      filtered = filtered.filter(o =>
-        (o.customer_name || '').toLowerCase().includes(q) ||
-        (o.customer_phone || '').includes(q) ||
-        (o.tracking_token || '').includes(q)
-      );
-    }
-
-    // Attach items
-    for (const o of filtered) {
-      const { data: items } = await supabase
-        .from('order_items')
-        .select('*')
-        .eq('order_id', o.id);
-      o.order_items = items || [];
-    }
-
-    res.json(filtered);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to load orders' });
-  }
-});
-
-app.get('/api/admin/orders/:id', authMiddleware, async (req, res) => {
-  try {
-    const { data: order, error } = await supabase
-      .from('orders')
-      .select('*')
-      .eq('id', req.params.id)
-      .single();
-    if (error || !order) return res.status(404).json({ error: 'Order not found' });
-
-    const { data: items } = await supabase
-      .from('order_items')
-      .select('*')
-      .eq('order_id', order.id);
-    order.order_items = items || [];
-
-    res.json(order);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to load order' });
-  }
-});
-
-app.patch('/api/admin/orders/:id', authMiddleware, async (req, res) => {
-  try {
-    const { status } = req.body;
-    const validStatuses = ['new', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled'];
-    if (!status || !validStatuses.includes(status)) {
-      return res.status(400).json({ error: 'Invalid status' });
-    }
-
-    const { error } = await supabase
-      .from('orders')
-      .update({ status })
-      .eq('id', req.params.id);
-    if (error) throw error;
-
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to update order' });
   }
 });
 
@@ -922,7 +646,6 @@ app.post('/api/admin/upload', authMiddleware, upload.single('image'), async (req
    ============================================================ */
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'admin', 'index.html')));
 app.get('/admin/', (req, res) => res.sendFile(path.join(__dirname, 'admin', 'index.html')));
-app.get('/order', (req, res) => res.sendFile(path.join(__dirname, 'order.html')));
 
 /* ============================================================
    ERROR HANDLING

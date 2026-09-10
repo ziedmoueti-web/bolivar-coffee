@@ -3,7 +3,8 @@
 Thumbs.db
 Desktop.ini
 
-# Dev server logs and internal data
+# Dev server logs and internal data (internal tooling — never commit)
+.freebuff/
 .freebuff/*.log
 .freebuff/*.err
 .freebuff/*.db

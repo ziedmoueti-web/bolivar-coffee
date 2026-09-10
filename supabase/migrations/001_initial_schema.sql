@@ -70,44 +70,6 @@ CREATE INDEX idx_menu_items_category ON public.menu_items(category_id);
 CREATE INDEX idx_menu_items_available ON public.menu_items(is_available);
 
 -- ============================================================
--- ORDERS (with tracking token, no sequential public IDs)
--- ============================================================
-CREATE TABLE public.orders (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  tracking_token TEXT UNIQUE NOT NULL DEFAULT encode(gen_random_bytes(32), 'hex'),
-  customer_name TEXT NOT NULL CHECK (length(trim(customer_name)) > 0 AND length(customer_name) <= 100),
-  customer_phone TEXT NOT NULL CHECK (length(trim(customer_phone)) > 0 AND length(customer_phone) <= 30),
-  customer_notes TEXT DEFAULT '' CHECK (length(customer_notes) <= 500),
-  subtotal NUMERIC(10,3) NOT NULL DEFAULT 0,
-  total NUMERIC(10,3) NOT NULL DEFAULT 0,
-  status TEXT NOT NULL DEFAULT 'new' CHECK (status IN (
-    'new', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled'
-  )),
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE INDEX idx_orders_status ON public.orders(status);
-CREATE INDEX idx_orders_tracking ON public.orders(tracking_token);
-CREATE INDEX idx_orders_created ON public.orders(created_at DESC);
-
--- ============================================================
--- ORDER ITEMS (prices frozen from database at time of order)
--- ============================================================
-CREATE TABLE public.order_items (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
-  menu_item_id UUID NOT NULL REFERENCES public.menu_items(id) ON DELETE RESTRICT,
-  item_name_snapshot TEXT NOT NULL,
-  unit_price NUMERIC(10,3) NOT NULL CHECK (unit_price >= 0),
-  quantity INT NOT NULL DEFAULT 1 CHECK (quantity > 0 AND quantity <= 100),
-  subtotal NUMERIC(10,3) NOT NULL CHECK (subtotal >= 0),
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE INDEX idx_order_items_order ON public.order_items(order_id);
-
--- ============================================================
 -- REVIEWS
 -- ============================================================
 CREATE TABLE public.reviews (
@@ -163,8 +125,6 @@ $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER t_menu_items_updated BEFORE UPDATE ON public.menu_items
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER t_orders_updated BEFORE UPDATE ON public.orders
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER t_profiles_updated BEFORE UPDATE ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER t_reviews_updated BEFORE UPDATE ON public.reviews
@@ -181,8 +141,6 @@ CREATE TRIGGER t_settings_updated BEFORE UPDATE ON public.business_settings
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.menu_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.menu_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.gallery_images ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.business_settings ENABLE ROW LEVEL SECURITY;
@@ -221,24 +179,6 @@ CREATE POLICY "Admins can update items" ON public.menu_items
   FOR UPDATE USING (public.is_admin());
 CREATE POLICY "Admins can delete items" ON public.menu_items
   FOR DELETE USING (public.is_admin());
-
--- ORDERS (public can create, admin manage all, no public read)
--- Customer tracking is handled server-side via service role key
-CREATE POLICY "Anyone can create orders" ON public.orders
-  FOR INSERT WITH CHECK (true);
-CREATE POLICY "Admins can view all orders" ON public.orders
-  FOR SELECT USING (public.is_admin());
-CREATE POLICY "Admins can update orders" ON public.orders
-  FOR UPDATE USING (public.is_admin());
-CREATE POLICY "Admins can delete orders" ON public.orders
-  FOR DELETE USING (public.is_admin());
-
--- ORDER ITEMS (public can create with order, admin view all)
--- Customer tracking is handled server-side via service role key
-CREATE POLICY "Anyone can insert order items" ON public.order_items
-  FOR INSERT WITH CHECK (true);
-CREATE POLICY "Admins can view order items" ON public.order_items
-  FOR SELECT USING (public.is_admin());
 
 -- REVIEWS (public read approved, anyone can submit, admin manage)
 CREATE POLICY "Public can view approved reviews" ON public.reviews

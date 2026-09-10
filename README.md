@@ -21,8 +21,6 @@ Admin Browser   → Express API (JWT auth) → Supabase PostgreSQL + Storage
 
 - **No Supabase client in frontend code** — all database access goes through the Express server
 - **Service role key stays server-side only** — never exposed to browsers
-- **Prices calculated server-side** — client cannot manipulate order totals
-- **Order tracking uses secure tokens** — not sequential IDs
 
 ---
 
@@ -57,8 +55,8 @@ JWT_SECRET=your-random-secret-string
 ### 3. Set up Supabase database
 
 1. Go to your Supabase dashboard → SQL Editor
-2. Open `supabase/migrations/001_initial_schema.sql`
-3. Paste and run the entire SQL
+2. Open `supabase/migrations/001_initial_schema.sql` and run it
+3. Then open `supabase/migrations/002_remove_orders.sql` and run it (removes the retired orders tables)
 
 ### 4. Create storage buckets
 
@@ -96,7 +94,7 @@ Open:
 | `PORT` | Server port (default: 3000) |
 | `SUPABASE_URL` | Your Supabase project URL |
 | `SUPABASE_ANON_KEY` | Your Supabase anon key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Your Supabase service role key (SECRET) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Your service role key (SECRET) |
 | `JWT_SECRET` | Strong random string for JWT signing |
 | `FRONTEND_URL` | Your production URL (for CORS) |
 
@@ -132,9 +130,8 @@ Navigate to `/admin/login.html` and sign in with the credentials you created in 
 
 ### Dashboard Features
 
-- **Dashboard** — Revenue, orders, pending count, charts
+- **Dashboard** — Menu items, categories, review and gallery counts
 - **Menu** — Add/edit/delete items, toggle availability, mark featured
-- **Orders** — View all orders, change status (New → Confirmed → Preparing → Ready → Completed)
 - **Reviews** — Approve, hide, delete customer reviews
 - **Gallery** — Add/delete images
 - **Settings** — Edit business info (phone, address, hours, Instagram, etc.)
@@ -144,10 +141,8 @@ Navigate to `/admin/login.html` and sign in with the credentials you created in 
 ## Customer Features
 
 - Browse menu with category tabs
-- Add items to cart
-- Place order (name + phone + notes)
-- Receive order confirmation with tracking token
-- Track order status via token
+- Gallery, reviews and Google reviews
+- Location, contact information and Instagram
 
 ---
 
@@ -155,9 +150,7 @@ Navigate to `/admin/login.html` and sign in with the credentials you created in 
 
 - Admin authentication via Supabase Auth + JWT
 - All admin API endpoints require valid JWT + admin role
-- Order prices calculated server-side from database (client cannot manipulate)
-- Order tracking uses cryptographically random tokens (not sequential IDs)
-- Rate limiting on login (5/min), orders (10/hr), reviews (3/hr)
+- Rate limiting on login (5/min) and reviews (3/hr)
 - Security headers via Helmet
 - Input sanitization on all user inputs
 - XSS protection via HTML escaping in admin dashboard
@@ -173,8 +166,6 @@ Navigate to `/admin/login.html` and sign in with the credentials you created in 
 | `profiles` | Admin/staff user profiles |
 | `menu_categories` | Menu categories (Coffee, Breakfast, etc.) |
 | `menu_items` | Menu items with prices |
-| `orders` | Customer orders with tracking tokens |
-| `order_items` | Line items per order |
 | `reviews` | Customer reviews |
 | `gallery_images` | Gallery photos |
 | `business_settings` | Key-value business config |
@@ -193,8 +184,6 @@ Navigate to `/admin/login.html` and sign in with the credentials you created in 
 | POST | `/api/reviews` | Submit a review |
 | GET | `/api/gallery` | Get active gallery images |
 | GET | `/api/settings` | Get business settings |
-| POST | `/api/orders` | Create an order |
-| GET | `/api/orders/track/:token` | Track order by token |
 
 ### Admin (requires JWT)
 
@@ -203,9 +192,6 @@ Navigate to `/admin/login.html` and sign in with the credentials you created in 
 | POST | `/api/auth/login` | Admin login |
 | GET | `/api/auth/me` | Get current user |
 | GET | `/api/admin/dashboard` | Dashboard stats |
-| GET | `/api/admin/orders` | List all orders |
-| GET | `/api/admin/orders/:id` | Get order details |
-| PATCH | `/api/admin/orders/:id` | Update order status |
 | GET | `/api/admin/menu` | List all menu items |
 | POST | `/api/admin/menu` | Create menu item |
 | PATCH | `/api/admin/menu/:id` | Update menu item |
@@ -229,4 +215,3 @@ Navigate to `/admin/login.html` and sign in with the credentials you created in 
 - **Hours:** Monday–Sunday, 07:00–00:00
 - **Google Rating:** 4.7 / 5 (24 reviews)
 - **Instagram:** @bolivar_coffeee
-- **Delivery:** Available on Glovo

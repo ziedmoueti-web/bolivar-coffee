@@ -546,25 +546,6 @@ tbody tr:hover { background: var(--card-hover); }
 .image-card:hover .image-card__overlay { opacity: 1; }
 
 /* ============================================================
-   ORDER DETAIL
-   ============================================================ */
-.order-detail__section { margin-bottom: 1.25rem; }
-.order-detail__section h4 {
-  font-size: .75rem; font-weight: 600;
-  text-transform: uppercase; letter-spacing: .05em;
-  color: var(--muted); margin-bottom: .5rem;
-}
-.order-detail__row {
-  display: flex; justify-content: space-between;
-  padding: .3rem 0; font-size: .88rem;
-}
-.order-detail__row.total {
-  border-top: 1px solid var(--border);
-  margin-top: .5rem; padding-top: .75rem;
-  font-weight: 600; font-size: 1rem;
-}
-
-/* ============================================================
    RESPONSIVE
    ============================================================ */
 @media (max-width: 1024px) {

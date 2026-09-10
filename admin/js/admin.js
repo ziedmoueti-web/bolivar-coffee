@@ -53,7 +53,7 @@
     window.location.hash = currentPage;
     $$('.sidebar__link[data-page]').forEach(function (l) { l.classList.toggle('is-active', l.getAttribute('data-page') === currentPage); });
     var titleEl = $('#topbarTitle');
-    var titles = { dashboard: 'Dashboard', menu: 'Menu', orders: 'Orders', reviews: 'Reviews', gallery: 'Gallery', settings: 'Settings' };
+    var titles = { dashboard: 'Dashboard', menu: 'Menu', reviews: 'Reviews', gallery: 'Gallery', settings: 'Settings' };
     if (titleEl) titleEl.textContent = titles[currentPage] || 'Dashboard';
     $('#sidebar').classList.remove('is-open');
     loadPage(currentPage);
@@ -65,7 +65,6 @@
     try {
       if (page === 'dashboard') await renderDashboard(main);
       else if (page === 'menu') await renderMenu(main);
-      else if (page === 'orders') await renderOrders(main);
       else if (page === 'reviews') await renderReviews(main);
       else if (page === 'gallery') await renderGallery(main);
       else if (page === 'settings') await renderSettings(main);
@@ -80,45 +79,13 @@
     var s = await apiFetch('/api/admin/dashboard');
     var html = '<div class="dash-header"><h1>Dashboard</h1><p>Welcome, ' + escapeHtml(currentUser.full_name || currentUser.email) + '</p></div>';
     html += '<div class="stats-grid">';
-    html += '<div class="stat-card stat-card--accent"><span class="stat-card__label">Today\'s Revenue</span><span class="stat-card__value">' + Number(s.today_revenue || 0).toFixed(3) + ' DT</span><span class="stat-card__detail">' + (s.today_orders || 0) + ' orders today</span></div>';
-    html += '<div class="stat-card"><span class="stat-card__label">Total Orders</span><span class="stat-card__value">' + (s.total_orders || 0) + '</span><span class="stat-card__detail">' + Number(s.total_revenue || 0).toFixed(3) + ' DT total</span></div>';
-    html += '<div class="stat-card stat-card--warning"><span class="stat-card__label">Pending</span><span class="stat-card__value">' + (s.pending_count || 0) + '</span><span class="stat-card__detail">Needs attention</span></div>';
-    html += '<div class="stat-card stat-card--info"><span class="stat-card__label">Menu Items</span><span class="stat-card__value">' + (s.menu_item_count || 0) + '</span><span class="stat-card__detail">Active products</span></div>';
+    html += '<div class="stat-card stat-card--accent"><span class="stat-card__label">Menu Items</span><span class="stat-card__value">' + (s.menu_item_count || 0) + '</span><span class="stat-card__detail">' + (s.available_item_count || 0) + ' available</span></div>';
+    html += '<div class="stat-card stat-card--info"><span class="stat-card__label">Categories</span><span class="stat-card__value">' + (s.category_count || 0) + '</span><span class="stat-card__detail">Menu sections</span></div>';
+    html += '<div class="stat-card stat-card--warning"><span class="stat-card__label">Pending Reviews</span><span class="stat-card__value">' + (s.pending_review_count || 0) + '</span><span class="stat-card__detail">' + (s.approved_review_count || 0) + ' approved</span></div>';
+    html += '<div class="stat-card"><span class="stat-card__label">Gallery Images</span><span class="stat-card__value">' + (s.gallery_count || 0) + '</span><span class="stat-card__detail">Active photos</span></div>';
     html += '</div>';
 
-    if (s.daily_revenue && s.daily_revenue.length) {
-      var maxR = Math.max(...s.daily_revenue.map(function(r){return r.revenue||1;}));
-      html += '<div class="table-wrap mb-2"><div class="table-header"><h2>Revenue (Last 30 Days)</h2></div><div style="padding:1.5rem;">';
-      s.daily_revenue.slice(0, 14).reverse().forEach(function (r) {
-        var pct = (r.revenue / maxR * 100);
-        var day = new Date(r.day).toLocaleDateString('en', { month: 'short', day: 'numeric' });
-        html += '<div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem;">';
-        html += '<span style="min-width:65px;font-size:.8rem;color:var(--muted);">' + escapeHtml(day) + '</span>';
-        html += '<div style="flex:1;height:22px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--accent);border-radius:4px;"></div></div>';
-        html += '<span style="min-width:65px;text-align:right;font-size:.8rem;font-weight:600;">' + Number(r.revenue).toFixed(3) + '</span></div>';
-      });
-      html += '</div></div>';
-    }
-
-    html += '<div class="table-wrap"><div class="table-header"><h2>Recent Orders</h2></div><div class="table-responsive"><table><thead><tr><th>#</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th>Time</th></tr></thead><tbody>';
-    if (s.recent_orders && s.recent_orders.length) {
-      s.recent_orders.forEach(function (o) {
-        var items = (o.order_items || []).map(function (i) { return escapeHtml(i.item_name_snapshot); }).join(', ');
-        var time = new Date(o.created_at).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' });
-        html += '<tr class="order-row" data-id="' + escapeHtml(o.id) + '" style="cursor:pointer;">';
-        html += '<td><strong>' + escapeHtml(o.tracking_token ? o.tracking_token.substring(0, 8) : '—') + '</strong></td>';
-        html += '<td>' + escapeHtml(o.customer_name) + '<br><span class="text-muted text-sm">' + escapeHtml(o.customer_phone) + '</span></td>';
-        html += '<td class="text-sm">' + items + '</td>';
-        html += '<td><strong>' + Number(o.total).toFixed(3) + ' DT</strong></td>';
-        html += '<td><span class="badge badge--' + escapeHtml(o.status) + '">' + escapeHtml(o.status) + '</span></td>';
-        html += '<td class="text-muted text-sm">' + escapeHtml(time) + '</td></tr>';
-      });
-    } else {
-      html += '<tr><td colspan="6" class="text-center text-muted" style="padding:2rem;">No orders yet</td></tr>';
-    }
-    html += '</tbody></table></div></div>';
     c.innerHTML = html;
-    $$('.order-row', c).forEach(function (row) { row.addEventListener('click', function () { showOrderDetail(row.getAttribute('data-id')); }); });
   }
 
   /* ============ MENU ============ */
@@ -221,66 +188,6 @@
     });
   }
 
-  /* ============ ORDERS ============ */
-  var orderFilter = 'all';
-  async function renderOrders(c) {
-    var orders = await apiFetch('/api/admin/orders?status=' + orderFilter);
-    var html = '<div class="dash-header"><h1>Orders</h1><p>' + orders.length + ' orders</p></div>';
-    html += '<div class="table-wrap"><div class="table-header"><div class="filters">';
-    ['all', 'new', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled'].forEach(function (f) {
-      html += '<button class="filter-btn' + (orderFilter === f ? ' is-active' : '') + '" data-status="' + f + '">' + (f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)) + '</button>';
-    });
-    html += '</div></div><div class="table-responsive"><table><thead><tr><th>Token</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead><tbody>';
-    orders.forEach(function (o) {
-      var items = (o.order_items || []).map(function (i) { return i.quantity + 'x ' + escapeHtml(i.item_name_snapshot); }).join(', ');
-      var date = new Date(o.created_at).toLocaleString('en', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-      html += '<tr><td><strong>' + escapeHtml((o.tracking_token || '').substring(0, 8)) + '</strong></td>';
-      html += '<td>' + escapeHtml(o.customer_name) + '<br><span class="text-muted text-sm">' + escapeHtml(o.customer_phone) + '</span></td>';
-      html += '<td class="text-sm">' + items + '</td>';
-      html += '<td><strong>' + Number(o.total).toFixed(3) + ' DT</strong></td>';
-      html += '<td><span class="badge badge--' + escapeHtml(o.status) + '">' + escapeHtml(o.status) + '</span></td>';
-      html += '<td class="text-muted text-sm">' + escapeHtml(date) + '</td>';
-      html += '<td><button class="btn btn--ghost btn--sm" data-view="' + escapeHtml(o.id) + '">View</button></td></tr>';
-    });
-    if (!orders.length) html += '<tr><td colspan="7" class="text-center text-muted" style="padding:2rem;">No orders</td></tr>';
-    html += '</tbody></table></div></div>';
-    c.innerHTML = html;
-
-    $$('[data-status]', c).forEach(function (btn) { btn.addEventListener('click', function () { orderFilter = btn.getAttribute('data-status'); renderOrders(c); }); });
-    $$('[data-view]', c).forEach(function (btn) { btn.addEventListener('click', function () { showOrderDetail(btn.getAttribute('data-view')); }); });
-  }
-
-  async function showOrderDetail(id) {
-    var o = await apiFetch('/api/admin/orders/' + id);
-    var mc = $('#modalContainer');
-    var html = '<div class="modal-overlay is-open"><div class="modal"><div class="modal__header"><h2>Order</h2><button class="modal__close" onclick="this.closest(\'.modal-overlay\').remove()">×</button></div>';
-    html += '<div class="modal__body">';
-    html += '<div class="order-detail__section"><h4>Customer</h4>';
-    html += '<div class="order-detail__row"><span>Name</span><span>' + escapeHtml(o.customer_name) + '</span></div>';
-    html += '<div class="order-detail__row"><span>Phone</span><span>' + escapeHtml(o.customer_phone) + '</span></div>';
-    if (o.customer_notes) html += '<div class="order-detail__row"><span>Notes</span><span>' + escapeHtml(o.customer_notes) + '</span></div>';
-    html += '<div class="order-detail__row"><span>Tracking</span><span style="font-size:.75rem;word-break:break-all;">' + escapeHtml(o.tracking_token) + '</span></div>';
-    html += '<div class="order-detail__row"><span>Date</span><span>' + new Date(o.created_at).toLocaleString() + '</span></div></div>';
-    html += '<div class="order-detail__section"><h4>Items</h4>';
-    (o.order_items || []).forEach(function (i) { html += '<div class="order-detail__row"><span>' + escapeHtml(i.item_name_snapshot) + ' × ' + i.quantity + '</span><span>' + Number(i.subtotal).toFixed(3) + ' DT</span></div>'; });
-    html += '<div class="order-detail__row total"><span>Total</span><span>' + Number(o.total).toFixed(3) + ' DT</span></div></div>';
-    html += '<div class="order-detail__section"><h4>Status</h4><div class="flex gap-1" style="flex-wrap:wrap;">';
-    ['new', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled'].forEach(function (s) {
-      html += '<button class="btn ' + (o.status === s ? 'btn--primary' : 'btn--ghost') + ' btn--sm status-btn" data-s="' + s + '">' + s.charAt(0).toUpperCase() + s.slice(1) + '</button>';
-    });
-    html += '</div></div></div>';
-    html += '<div class="modal__footer"><button class="btn btn--ghost" onclick="this.closest(\'.modal-overlay\').remove()">Close</button></div></div></div>';
-    mc.innerHTML = html;
-
-    $$('.status-btn', mc).forEach(function (btn) {
-      btn.addEventListener('click', async function () {
-        await apiFetch('/api/admin/orders/' + id, { method: 'PATCH', body: { status: btn.getAttribute('data-s') } });
-        mc.innerHTML = '';
-        loadPage(currentPage);
-      });
-    });
-  }
-
   /* ============ REVIEWS ============ */
   async function renderReviews(c) {
     var reviews = await apiFetch('/api/admin/reviews');
@@ -337,7 +244,7 @@
     var fields = [
       ['business_name', 'Business Name'], ['phone', 'Phone'], ['address', 'Address'],
       ['opening_hours', 'Opening Hours'], ['instagram', 'Instagram URL'],
-      ['instagram_handle', 'Instagram Handle'], ['glovo_url', 'Glovo URL'],
+      ['instagram_handle', 'Instagram Handle'],
       ['google_rating', 'Google Rating'], ['google_review_count', 'Google Reviews'],
     ];
     var html = '<div class="dash-header"><h1>Settings</h1><p>Edit your business information.</p></div>';
@@ -359,6 +266,31 @@
     });
   }
 
+  /* ============ NOTIFICATIONS ============ */
+  // Orders removed — the notification bell now links to pending review moderation.
+  async function refreshNotifications() {
+    try {
+      var settings = await apiFetch('/api/admin/settings');
+      var s = await apiFetch('/api/admin/dashboard');
+      var pending = s.pending_review_count || 0;
+      var badge = $('#notifBadge');
+      if (badge) {
+        badge.style.display = pending > 0 ? '' : 'none';
+        badge.textContent = String(pending);
+      }
+      var list = $('#notifList');
+      if (list) {
+        var items = [];
+        if (pending > 0) items.push('<p class="notif-panel__item">' + pending + ' review' + (pending === 1 ? '' : 's') + ' awaiting approval — <a href="#reviews">moderate them</a></p>');
+        items.push('<p class="notif-panel__item">Instagram: ' + escapeHtml(settings.instagram_handle ? '@' + settings.instagram_handle.replace(/^@/, '') : 'not set') + '</p>');
+        items.push('<p class="notif-panel__item">Phone: ' + escapeHtml(settings.phone || 'not set') + '</p>');
+        list.innerHTML = items.join('');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
   /* ============ INIT ============ */
   async function init() {
     var authed = await checkAuth();
@@ -376,8 +308,25 @@
       window.location.href = 'login.html';
     });
 
+    var notifBtn = $('#notifBtn');
+    var notifPanel = $('#notifPanel');
+    var notifClose = $('#notifClose');
+    if (notifBtn && notifPanel) {
+      notifBtn.addEventListener('click', function () {
+        notifPanel.classList.toggle('is-open');
+        notifPanel.setAttribute('aria-hidden', String(!notifPanel.classList.contains('is-open')));
+      });
+    }
+    if (notifClose && notifPanel) {
+      notifClose.addEventListener('click', function () {
+        notifPanel.classList.remove('is-open');
+        notifPanel.setAttribute('aria-hidden', 'true');
+      });
+    }
+
     var hash = window.location.hash.replace('#', '') || 'dashboard';
     navigate(hash);
+    refreshNotifications();
     window.addEventListener('hashchange', function () {
       var p = window.location.hash.replace('#', '') || 'dashboard';
       if (p !== currentPage) navigate(p);
