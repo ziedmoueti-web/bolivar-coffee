@@ -66,6 +66,22 @@ In Supabase dashboard → Storage:
 
 ### 5. Create admin user
 
+**Option A — CLI seed script (recommended):**
+
+```bash
+npm run create-admin
+```
+
+This creates the admin account `admin@gmail.com` / `admin.123` in Supabase Auth,
+confirms the email, and ensures the profile has the `admin` role. You can override
+the defaults:
+
+```bash
+ADMIN_EMAIL=you@example.com ADMIN_PASSWORD=your-secret npm run create-admin
+```
+
+**Option B — Supabase dashboard:**
+
 In Supabase dashboard → Authentication → Users:
 - Click "Add User"
 - Enter email and password
