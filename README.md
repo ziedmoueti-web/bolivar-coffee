@@ -52,6 +52,11 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 JWT_SECRET=your-random-secret-string
 ```
 
+**No Supabase project yet?** Set `DEMO_MODE=true` in `.env` instead. The server then
+runs on an in-memory database pre-seeded with sample data — the whole site and the
+admin dashboard work, but every change is lost on restart and nothing is persisted.
+Log in with `admin@demo.local` / `demo1234`. Never enable this in production.
+
 ### 3. Set up Supabase database
 
 1. Go to your Supabase dashboard → SQL Editor

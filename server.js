@@ -14,16 +14,25 @@ const crypto = require('crypto');
 const helmet = require('helmet');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+// Treat PORT=0 or garbage as "not set" so the .env value / default 3000 applies.
+// (Some environments inject PORT=0; hosting platforms that set a real PORT still win.)
+const PORT = Number(process.env.PORT) > 0 ? Number(process.env.PORT) : 3000;
+
+// Demo mode — run the full site + dashboard with in-memory data, no Supabase.
+// Off by default; enable with DEMO_MODE=true in .env. Never enable in production.
+const DEMO_MODE = process.env.DEMO_MODE === 'true';
 
 /* ============================================================
    ENVIRONMENT VALIDATION
    ============================================================ */
-const required = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'JWT_SECRET'];
+const required = DEMO_MODE
+  ? ['JWT_SECRET'] // demo mode needs no Supabase credentials
+  : ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'JWT_SECRET'];
 const missing = required.filter(k => !process.env[k]);
 if (missing.length) {
   console.error(`\n❌ Missing required environment variables: ${missing.join(', ')}`);
-  console.error('   Copy .env.example to .env and fill in your Supabase credentials.\n');
+  console.error('   Copy .env.example to .env and fill in your Supabase credentials.');
+  console.error('   (Or set DEMO_MODE=true in .env to run with in-memory demo data instead.)\n');
   process.exit(1);
 }
 
@@ -34,8 +43,11 @@ const JWT_SECRET = process.env.JWT_SECRET;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-// Supabase client with service role (server-side only, never exposed)
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+// Supabase client with service role (server-side only, never exposed).
+// In demo mode this is swapped for an in-memory client (see demo-data.js).
+const supabase = DEMO_MODE
+  ? require('./demo-data').createDemoClient()
+  : createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 /* ============================================================
    SECURITY MIDDLEWARE
@@ -667,5 +679,11 @@ app.listen(PORT, () => {
   console.log(`   Admin login:     http://localhost:${PORT}/admin/login.html`);
   console.log(`   Admin dashboard: http://localhost:${PORT}/admin/index.html`);
   console.log(`\n   Environment: ${NODE_ENV}`);
-  console.log(`   Supabase: ${SUPABASE_URL}\n`);
+  console.log(`   Supabase: ${DEMO_MODE ? '(demo — in-memory)' : SUPABASE_URL}`);
+  if (DEMO_MODE) {
+    console.log('');
+    console.log('   ⚠  DEMO MODE — in-memory data, changes are lost on restart.');
+    console.log('      Admin login: admin@demo.local / demo1234');
+  }
+  console.log('');
 });
